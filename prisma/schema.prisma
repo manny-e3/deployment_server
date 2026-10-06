@@ -1,0 +1,199 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "mysql"
+  url               = env("DATABASE_URL")
+  // Development only: `prisma migrate dev` diffs against this database.
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+// In MySQL, Prisma maps String to VARCHAR(191). Long values use @db.Text or a wider VarChar.
+
+enum Role {
+  ADMIN
+  DEPLOYER
+  VIEWER
+}
+
+enum AuthType {
+  KEY
+  PASSWORD
+}
+
+enum DeployStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum DeployTrigger {
+  MANUAL
+  WEBHOOK
+  ROLLBACK
+}
+
+enum LogStream {
+  STDOUT
+  STDERR
+  SYSTEM
+}
+
+model User {
+  id            String         @id @default(cuid())
+  name          String
+  email         String         @unique
+  passwordHash  String
+  role          Role           @default(VIEWER)
+  isActive      Boolean        @default(true)
+  tokenVersion  Int            @default(0) // bump to log a user out everywhere
+  lastLoginAt   DateTime?
+  createdAt     DateTime       @default(now())
+  deployments   Deployment[]
+  auditLogs     AuditLog[]
+  refreshTokens RefreshToken[]
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique @db.Char(64)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Server {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  host            String
+  port            Int       @default(22)
+  username        String
+  authType        AuthType
+  secretEnc       String    @db.Text // encrypted private key can be several KB
+  passphraseEnc   String?   @db.Text
+  hostFingerprint String?
+  lastCheckAt     DateTime?
+  lastCheckOk     Boolean?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  targets         Target[]
+}
+
+model Project {
+  id               String            @id @default(cuid())
+  name             String            @unique
+  repoUrl          String            @db.VarChar(500)
+  defaultBranch    String            @default("main")
+  autoDeploy       Boolean           @default(false)
+  webhookSecretEnc String            @db.VarChar(255)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  targets          Target[]
+  webhookDeliveries WebhookDelivery[]
+}
+
+model Target {
+  id                 String       @id @default(cuid())
+  projectId          String
+  serverId           String
+  name               String // "Production 1", "Staging"
+  path               String       @db.VarChar(500)
+  branch             String?
+  preDeploy          String       @db.Text // MySQL TEXT cannot have a default; send "" on create
+  postDeploy         String       @db.Text
+  healthCheckUrl     String?      @db.VarChar(500)
+  activeDeploymentId String? // lock: set while a deploy is queued or running
+  createdAt          DateTime     @default(now())
+  project            Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  server             Server       @relation(fields: [serverId], references: [id], onDelete: Restrict)
+  envVars            EnvVar[]
+  deployments        Deployment[]
+
+  @@unique([serverId, path]) // two projects can't share one folder
+  @@index([projectId])
+}
+
+model EnvVar {
+  id       String @id @default(cuid())
+  targetId String
+  key      String @db.VarChar(128)
+  valueEnc String @db.Text
+  target   Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([targetId, key])
+}
+
+model Deployment {
+  id            String          @id @default(cuid())
+  number        Int             @unique @default(autoincrement()) // shown as "#128"
+  targetId      String
+  triggeredById String?
+  trigger       DeployTrigger
+  status        DeployStatus    @default(QUEUED)
+  branch        String
+  requestedSha  String?         @db.VarChar(40) // set for rollbacks and webhooks
+  commitSha     String?         @db.VarChar(40)
+  commitMessage String?         @db.Text
+  previousSha   String?         @db.VarChar(40)
+  exitCode      Int?
+  error         String?         @db.Text
+  queuedAt      DateTime        @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  target        Target          @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  triggeredBy   User?           @relation(fields: [triggeredById], references: [id])
+  logs          DeploymentLog[]
+
+  @@index([targetId, queuedAt])
+  @@index([status])
+}
+
+model DeploymentLog {
+  id           BigInt     @id @default(autoincrement())
+  deploymentId String
+  seq          Int // line order inside one deploy
+  stream       LogStream
+  line         String     @db.Text // lines capped at 4 KB in code
+  createdAt    DateTime   @default(now())
+  deployment   Deployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+
+  @@unique([deploymentId, seq])
+  @@index([createdAt]) // nightly retention deletes by age
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  userId    String?
+  action    String   @db.VarChar(64) // "deploy.started", "server.created"
+  entity    String   @db.VarChar(64)
+  entityId  String?
+  details   Json?
+  ip        String?  @db.VarChar(45)
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+  @@index([userId])
+}
+
+model WebhookDelivery {
+  id         String   @id @default(cuid())
+  deliveryId String?  @unique // X-GitHub-Delivery, for dedupe
+  projectId  String
+  provider   String   @db.VarChar(16) // github, gitlab
+  event      String   @db.VarChar(64)
+  branch     String?
+  statusCode Int
+  result     String   @db.VarChar(255)
+  createdAt  DateTime @default(now())
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+}

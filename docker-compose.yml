@@ -1,0 +1,117 @@
+name: deploy-portal
+
+services:
+  mysql:
+    image: mysql:8.4
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: portal
+      MYSQL_USER: portal
+      MYSQL_PASSWORD: portal
+    ports:
+      # 3307 so it can run beside XAMPP's MariaDB on 3306
+      - '3307:3306'
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-uroot', '-proot']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Browse the portal database at http://localhost:8081 (log in as portal / portal)
+  phpmyadmin:
+    image: phpmyadmin:5
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: '3306'
+    ports:
+      # 8081 so it doesn't clash with XAMPP's Apache or other projects on 8080
+      - '8081:80'
+    depends_on:
+      - mysql
+
+  # Pretend target server for SSH integration and end-to-end tests
+  sshd:
+    build: ./docker/sshd
+    environment:
+      PUID: '1000'
+      PGID: '1000'
+      TZ: Etc/UTC
+      PASSWORD_ACCESS: 'true'
+      USER_NAME: deploy
+      USER_PASSWORD: deploy-test-only
+      # Public half of tests/fixtures/test_ed25519 (a key for tests only)
+      PUBLIC_KEY: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINXI6KroznWVVSXIYwlgwLZlqnycRBiLD3ZaxQVNdaoD deploy-portal-test-only
+    ports:
+      - '2222:2222'
+
+  # The portal API. Applies database migrations, then starts. Reads settings from .env;
+  # the database and Redis addresses are replaced with the Docker service names.
+  api:
+    build: .
+    image: deploy-portal-app:${APP_VERSION:-latest}
+    env_file: .env
+    environment:
+      DATABASE_URL: mysql://portal:portal@mysql:3306/portal
+      REDIS_URL: redis://redis:6379
+    command: ['sh', '-c', 'npx prisma migrate deploy && node index.js']
+    ports:
+      - '${PORT:-4000}:${PORT:-4000}'
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:' + (process.env.PORT || 4000) + '/api/v1/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  # The deploy worker: same image, different command. Starts once the API (and so the
+  # migrations) are ready. Run only one: on start it fails deploys a previous worker left running.
+  worker:
+    image: deploy-portal-app:${APP_VERSION:-latest}
+    env_file: .env
+    environment:
+      DATABASE_URL: mysql://portal:portal@mysql:3306/portal
+      REDIS_URL: redis://redis:6379
+    command: ['node', 'worker.js']
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      api:
+        condition: service_healthy
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
+  redis-data:

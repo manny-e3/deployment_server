@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: portal_test
+          MYSQL_USER: portal
+          MYSQL_PASSWORD: portal
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+      # Pretend target server for the SSH tests
+      sshd:
+        image: lscr.io/linuxserver/openssh-server:latest
+        env:
+          PASSWORD_ACCESS: 'true'
+          USER_NAME: deploy
+          USER_PASSWORD: deploy-test-only
+          PUBLIC_KEY: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINXI6KroznWVVSXIYwlgwLZlqnycRBiLD3ZaxQVNdaoD deploy-portal-test-only
+        ports:
+          - 2222:2222
+
+    env:
+      TEST_DATABASE_URL: mysql://portal:portal@127.0.0.1:3306/portal_test
+      TEST_REDIS_URL: redis://127.0.0.1:6379/1
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Locally, docker/sshd/Dockerfile adds git and bash to the sshd image; do the same here.
+      - run: docker exec ${{ job.services.sshd.id }} apk add --no-cache git bash
+      - run: npm test
+

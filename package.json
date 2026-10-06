@@ -1,0 +1,49 @@
+{
+  "name": "deploymentserver",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "worker": "node worker.js",
+    "worker:dev": "node --watch worker.js",
+    "pretest": "node tests/migrate.js",
+    "test": "node --test --test-concurrency=1 \"tests/*.test.js\"",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio",
+    "postinstall": "prisma generate",
+    "db:seed:scale": "node prisma/seed-scale.js",
+    "release": "prisma migrate deploy && pm2 startOrReload ecosystem.config.js --update-env"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "argon2": "^0.45.1",
+    "bullmq": "^5.81.5",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "helmet": "^8.3.0",
+    "ioredis": "^5.11.1",
+    "jsonwebtoken": "^9.0.3",
+    "pino": "^10.4.0",
+    "pino-http": "^11.0.0",
+    "prisma": "^6.19.3",
+    "socket.io": "^4.8.4",
+    "ssh2": "^1.17.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "pino-pretty": "^13.2.0",
+    "socket.io-client": "^4.8.4",
+    "supertest": "^7.3.1"
+  }
+}
