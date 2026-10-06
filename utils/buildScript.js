@@ -7,7 +7,7 @@ const shellQuote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
 
 /** One line of a .env file, double-quoted so any value round-trips through dotenv. */
 const envLine = (key, value) =>
-  `${key}="${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+  `${key}="${value.replace(/\\/g, '\\\\').replace(/"/g, '\\\"').replace(/\n/g, '\\n')}"`;
 
 /**
  * Marker lines the worker reads and hides from the visible log:
@@ -23,20 +23,23 @@ function buildScript({ repoUrl, branch, path, sha, envVars = {}, preDeploy = '',
     `REPO=${shellQuote(repoUrl)}; BRANCH=${shellQuote(branch)}; DIR=${shellQuote(path)}; SHA=${shellQuote(sha ?? '')}`,
     '',
     'echo "__STEP__ Fetching $BRANCH"',
-    // The previous commit is read before any checkout, so a first deploy reports "none".
     'mkdir -p "$DIR"',
-    'if [ -d "$DIR/.git" ]; then',
-    '  echo "__PREV__ $(git -C "$DIR" rev-parse HEAD 2>/dev/null || echo none)"',
+    'cd "$DIR"',
+    // Clean up any stale index locks left by interrupted/canceled previous deployments
+    'rm -f .git/index.lock .git/shallow.lock',
+    // Verify valid git directory exists (with HEAD); if corrupted or missing, re-initialize cleanly
+    'if git rev-parse --git-dir >/dev/null 2>&1; then',
+    '  echo "__PREV__ $(git rev-parse HEAD 2>/dev/null || echo none)"',
     'else',
     '  echo "__PREV__ none"',
-    '  git -C "$DIR" init -q',
-    '  git -C "$DIR" checkout -q -B "$BRANCH" 2>/dev/null || true',
+    '  rm -rf .git',
+    '  git init -q',
     'fi',
-    'cd "$DIR"',
-    'git remote set-url origin "$REPO" 2>/dev/null || git remote add origin "$REPO"',
+    'git remote remove origin 2>/dev/null || true',
+    'git remote add origin "$REPO"',
     'git fetch --prune origin "$BRANCH"',
-    'git checkout -q -B "$BRANCH" "origin/$BRANCH"',
-    'if [ -n "$SHA" ]; then git reset --hard "$SHA"; else git reset --hard "origin/$BRANCH"; fi',
+    'git checkout -q -B "$BRANCH" FETCH_HEAD',
+    'if [ -n "$SHA" ]; then git reset --hard "$SHA"; else git reset --hard FETCH_HEAD; fi',
     'echo "__COMMIT__ $(git rev-parse HEAD) $(git log -1 --pretty=%s)"',
   ];
 

@@ -135,7 +135,6 @@ async function replaceEnv(targetId, vars, actor, ip) {
   return { keys };
 }
 
-
 /** Decrypts and returns full env vars (key => value) for admin configuration */
 async function getEnvFull(targetId) {
   await getAnyTarget(targetId);
@@ -154,7 +153,7 @@ async function getEnvFull(targetId) {
 /** Imports a custom SQL file directly into the target server database over SSH */
 async function importSql(targetId, data, actor, ip) {
   const target = await getAnyTarget(targetId);
-  const server = await serverModel.findById(target.serverId);
+  const server = await serverModel.findByIdWithSecrets(target.serverId);
   if (!server) throw new NotFound('Server');
 
   const sqlContent = data.sqlContent || '';
@@ -194,8 +193,9 @@ async function importSql(targetId, data, actor, ip) {
 
   try {
     // 1. Create database if it doesn't already exist
-    const safeDbName = dbName.replace(/[`"';]/g, '');
-    const createCmd = `MYSQL_PWD=${shellQuote(dbPass)} mysql -h ${shellQuote(dbHost)} -P ${shellQuote(dbPort)} -u ${shellQuote(dbUser)} -e "CREATE DATABASE IF NOT EXISTS \`${safeDbName}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"`;
+    const safeDbName = dbName.replace(/[`"';\s]/g, '');
+    const createSql = `CREATE DATABASE IF NOT EXISTS \`${safeDbName}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`;
+    const createCmd = `MYSQL_PWD=${shellQuote(dbPass)} mysql --max-allowed-packet=128M -h ${shellQuote(dbHost)} -P ${shellQuote(dbPort)} -u ${shellQuote(dbUser)} -e ${shellQuote(createSql)}`;
     try {
       await ssh.exec(conn, createCmd, { timeoutMs: 30000 });
     } catch (e) {
@@ -203,11 +203,11 @@ async function importSql(targetId, data, actor, ip) {
     }
 
     // 2. Import SQL dump into database
-    const importCmd = `MYSQL_PWD=${shellQuote(dbPass)} mysql -h ${shellQuote(dbHost)} -P ${shellQuote(dbPort)} -u ${shellQuote(dbUser)} \`${safeDbName}\``;
-    const resImport = await ssh.exec(conn, importCmd, { stdin: sqlContent, timeoutMs: 180000 });
+    const importCmd = `MYSQL_PWD=${shellQuote(dbPass)} mysql --max-allowed-packet=128M -h ${shellQuote(dbHost)} -P ${shellQuote(dbPort)} -u ${shellQuote(dbUser)} --database=${shellQuote(safeDbName)}`;
+    const resImport = await ssh.exec(conn, importCmd, { stdin: sqlContent, timeoutMs: 600000 });
 
     if (resImport.code !== 0) {
-      throw new BusinessRuleError('SQL_IMPORT_FAILED', 'MySQL import failed: ' + (resImport.stderr || 'Exit code ' + resImport.code));
+      throw new BusinessRuleError('SQL_IMPORT_FAILED', 'MySQL import failed: ' + (resImport.stderr || resImport.stdout || 'Exit code ' + resImport.code));
     }
 
     await audit.record({
@@ -237,7 +237,7 @@ async function importSql(targetId, data, actor, ip) {
 /** Executes an artisan command inside the target directory over SSH */
 async function runArtisan(targetId, command, actor, ip) {
   const target = await getAnyTarget(targetId);
-  const server = await serverModel.findById(target.serverId);
+  const server = await serverModel.findByIdWithSecrets(target.serverId);
   if (!server) throw new NotFound('Server');
 
   const cleanCmd = (command || '').trim();

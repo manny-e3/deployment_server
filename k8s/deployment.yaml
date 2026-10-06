@@ -22,7 +22,7 @@ spec:
       # so pods starting together don't apply a migration twice.
       initContainers:
         - name: migrate
-          image: mannye3/deploy-portal-app:1.0.0
+          image: mannye3/deploy-portal-app:1.0.1
           command: [npx, prisma, migrate, deploy]
           envFrom:
             - secretRef: { name: portal-env }
@@ -32,7 +32,7 @@ spec:
             - { name: PORT, value: '4000' }
       containers:
         - name: api
-          image: mannye3/deploy-portal-app:1.0.0
+          image: mannye3/deploy-portal-app:1.0.1
           command: [node, index.js]
           envFrom:
             - secretRef: { name: portal-env }
@@ -70,7 +70,7 @@ spec:
       terminationGracePeriodSeconds: 15
       containers:
         - name: worker
-          image: mannye3/deploy-portal-app:1.0.0
+          image: mannye3/deploy-portal-app:1.0.1
           command: [node, worker.js]
           envFrom:
             - secretRef: { name: portal-env }
