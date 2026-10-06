@@ -45,13 +45,28 @@ jobs:
       TEST_REDIS_URL: redis://127.0.0.1:6379/1
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+
+      # The sshd container takes a few seconds to start sshd; the SSH and deploy tests need it.
+      - name: Wait for the sshd test container
+        run: |
+          for i in $(seq 1 60); do
+            ssh-keyscan -p 2222 127.0.0.1 >/dev/null 2>&1 && echo "sshd is up" && exit 0
+            sleep 2
+          done
+          echo "sshd did not start" && docker ps -a && exit 1
+
       # Locally, docker/sshd/Dockerfile adds git and bash to the sshd image; do the same here.
-      - run: docker exec ${{ job.services.sshd.id }} apk add --no-cache git bash
+      - name: Add git and bash to the sshd container
+        run: |
+          id=$(docker ps -q --filter "ancestor=lscr.io/linuxserver/openssh-server:latest")
+          test -n "$id" || { echo "sshd container not found"; docker ps; exit 1; }
+          docker exec "$id" apk add --no-cache git bash
+
       - run: npm test
 

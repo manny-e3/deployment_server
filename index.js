@@ -29,8 +29,11 @@ function createApp() {
   // Webhooks need the exact raw body to check the signature, so they come before express.json().
   app.use('/api/v1/webhooks', express.raw({ type: 'application/json', limit: '1mb' }), webhookRoutes);
 
-  app.use(express.json({ limit: '50mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+  // SQL dumps for import-sql can be large; every other request stays at 1 MB.
+  // (A body parsed here is skipped by the 1 MB parser below.)
+  app.use('/api/v1/targets/:id/import-sql', express.json({ limit: '50mb' }));
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '1mb' }));
   app.use('/api/v1', routes);
 
   app.use(notFound);

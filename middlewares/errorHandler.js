@@ -20,7 +20,8 @@ function toAppError(err) {
     return new BadRequest('INVALID_JSON', 'The request body is not valid JSON');
   }
   if (err?.type === 'entity.too.large') {
-    return new AppError('PAYLOAD_TOO_LARGE', 413, 'The request body is larger than 1 MB');
+    const limitMb = Math.round((err.limit ?? 1_048_576) / 1_048_576);
+    return new AppError('PAYLOAD_TOO_LARGE', 413, `The request body is larger than ${limitMb} MB`);
   }
 
   return new AppError(
