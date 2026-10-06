@@ -1,0 +1,85 @@
+# The portal API (3 pods) and the deploy worker (exactly 1 pod), from the same image.
+#
+# Settings come from the Secret "portal-env", made from your .env file:
+#   kubectl create secret generic portal-env --from-env-file=.env
+# The values below override the ones that must differ inside the cluster.
+#
+# Images come from Docker Hub user mannye3 (or see k8s/README.md to use a
+# local image without Docker Hub).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portal-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels: { app: portal-api }
+  template:
+    metadata:
+      labels: { app: portal-api }
+    spec:
+      # Bring the database schema up to date before the API starts. Prisma takes a lock,
+      # so pods starting together don't apply a migration twice.
+      initContainers:
+        - name: migrate
+          image: mannye3/deploy-portal-app:1.0.0
+          command: [npx, prisma, migrate, deploy]
+          envFrom:
+            - secretRef: { name: portal-env }
+          env: &clusterEnv
+            - { name: DATABASE_URL, value: 'mysql://portal:portal@mysql:3306/portal' }
+            - { name: REDIS_URL, value: 'redis://redis:6379' }
+            - { name: PORT, value: '4000' }
+      containers:
+        - name: api
+          image: mannye3/deploy-portal-app:1.0.0
+          command: [node, index.js]
+          envFrom:
+            - secretRef: { name: portal-env }
+          env: *clusterEnv
+          ports:
+            - containerPort: 4000
+          # Ready only while MySQL and Redis answer (health returns 503 otherwise).
+          readinessProbe:
+            httpGet: { path: /api/v1/health, port: 4000 }
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: 4000 }
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { memory: 512Mi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portal-worker
+spec:
+  # Exactly one. On start the worker fails every deploy still marked running, so a second
+  # worker would fail the first one's deploys. Recreate stops the old pod before a new one starts.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: portal-worker }
+  template:
+    metadata:
+      labels: { app: portal-worker }
+    spec:
+      terminationGracePeriodSeconds: 15
+      containers:
+        - name: worker
+          image: mannye3/deploy-portal-app:1.0.0
+          command: [node, worker.js]
+          envFrom:
+            - secretRef: { name: portal-env }
+          env:
+            - { name: DATABASE_URL, value: 'mysql://portal:portal@mysql:3306/portal' }
+            - { name: REDIS_URL, value: 'redis://redis:6379' }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { memory: 512Mi }
+
+
+

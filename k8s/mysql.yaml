@@ -1,0 +1,60 @@
+# MySQL 8.4 for the local cluster (minikube). Same settings as docker-compose.yml.
+# Local use only: the passwords are written here in plain text.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # never two MySQL pods on one volume
+  selector:
+    matchLabels: { app: mysql }
+  template:
+    metadata:
+      labels: { app: mysql }
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.4
+          args:
+            - --character-set-server=utf8mb4
+            - --collation-server=utf8mb4_0900_ai_ci
+            - --default-time-zone=+00:00
+          env:
+            - { name: MYSQL_ROOT_PASSWORD, value: root }
+            - { name: MYSQL_DATABASE, value: portal }
+            - { name: MYSQL_USER, value: portal }
+            - { name: MYSQL_PASSWORD, value: portal }
+          ports:
+            - containerPort: 3306
+          readinessProbe:
+            exec:
+              command: [mysqladmin, ping, -h, localhost, -uroot, -proot]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/mysql }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mysql-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  selector: { app: mysql }
+  ports:
+    - port: 3306

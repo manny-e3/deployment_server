@@ -39,12 +39,17 @@ async function getHealth() {
     check('queue', () => deployQueue.getJobCounts('waiting', 'active', 'delayed', 'failed')),
   ]);
 
-  const healthy = [database, redisCheck, queue].every((c) => c.status === 'up');
+  const checks = { database, redis: redisCheck, queue };
+  const down = Object.keys(checks).filter((name) => checks[name].status !== 'up');
+  const healthy = down.length === 0;
   return {
     status: healthy ? 'ok' : 'degraded',
+    message: healthy
+      ? 'Deploy Portal API is running. Database, Redis and the deploy queue are all up.'
+      : `Deploy Portal API is running, but these are down: ${down.join(', ')}.`,
     uptimeSec: Math.round(process.uptime()),
     timestamp: new Date().toISOString(),
-    checks: { database, redis: redisCheck, queue },
+    checks,
   };
 }
 

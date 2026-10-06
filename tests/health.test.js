@@ -14,6 +14,7 @@ describe('GET /api/v1/health', () => {
     const res = await request(app).get('/api/v1/health').expect(200);
 
     assert.equal(res.body.status, 'ok');
+    assert.match(res.body.message, /is running\. Database, Redis and the deploy queue are all up/);
     assert.equal(res.body.checks.database.status, 'up');
     assert.equal(res.body.checks.redis.status, 'up');
     assert.equal(res.body.checks.queue.status, 'up');
