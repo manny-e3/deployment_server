@@ -45,7 +45,12 @@ const host = z
 const sshUser = z
   .string()
   .trim()
-  .regex(/^[a-z_][a-z0-9_.-]{0,31}$/i, 'must be a valid Linux user name');
+  .min(1)
+  .max(128)
+  .refine(
+    (u) => /^[a-zA-Z0-9_.\\/@$-]+$/.test(u),
+    'must be a valid Linux or Windows user name (e.g. deploy, Administrator, DOMAIN\\user)'
+  );
 const port = z.coerce.number().int().min(1).max(65535);
 const authType = z.enum(['KEY', 'PASSWORD']);
 const secret = z.string().min(1).max(16_384);

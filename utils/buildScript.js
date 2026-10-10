@@ -38,7 +38,7 @@ function buildScript({ repoUrl, branch, path, sha, envVars = {}, preDeploy = '',
     'git remote remove origin 2>/dev/null || true',
     'git remote add origin "$REPO"',
     'git fetch --prune origin "$BRANCH"',
-    'git checkout -q -B "$BRANCH" FETCH_HEAD',
+    'git checkout -f -q -B "$BRANCH" FETCH_HEAD',
     'if [ -n "$SHA" ]; then git reset --hard "$SHA"; else git reset --hard FETCH_HEAD; fi',
     'echo "__COMMIT__ $(git rev-parse HEAD) $(git log -1 --pretty=%s)"',
   ];
