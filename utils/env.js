@@ -30,9 +30,10 @@ const envSchema = z.object({
     .default('loopback')
     .transform((v) => (/^\d+$/.test(v) ? Number(v) : v)),
   // true = the API process also runs the deploy worker (hosts without background workers).
+  // Defaults to 'true' so single-process containers (e.g. Render free tier) process deployments immediately.
   WORKER_IN_PROCESS: z
     .enum(['true', 'false'])
-    .default('false')
+    .default('true')
     .transform((v) => v === 'true'),
 
   // API and worker
