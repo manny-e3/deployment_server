@@ -17,7 +17,9 @@ function createApp() {
   const app = express();
 
   app.disable('x-powered-by');
-  app.set('trust proxy', 'loopback'); // Nginx runs on the same host
+  // Which proxies to trust for the client IP (rate limits, audit log): Nginx on the same host by
+  // default; on Render, the number of proxy hops in front of the app.
+  app.set('trust proxy', env.TRUST_PROXY);
 
   app.use(requestId);
   app.use(httpLogger);
@@ -52,11 +54,19 @@ function start() {
   });
   const sockets = createSocketServer(server);
 
+  // One process for API and worker, for hosts without background workers. Run no other worker then.
+  const worker = env.WORKER_IN_PROCESS ? require('./worker') : null;
+  worker?.startWorker().catch((err) => {
+    logger.fatal({ err }, 'worker failed to start');
+    process.exit(1);
+  });
+
   const shutdown = (signal) => {
     logger.info(`${signal} received, shutting down`);
     setTimeout(() => process.exit(1), 10_000).unref();
     sockets.close();
     server.close(async () => {
+      await worker?.stopWorker();
       await closeConnections();
       process.exit(0);
     });

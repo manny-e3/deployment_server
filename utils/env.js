@@ -24,6 +24,16 @@ const envSchema = z.object({
   JWT_SECRET: hex64,
   ACCESS_TOKEN_TTL: duration.default('15m'),
   REFRESH_TOKEN_TTL: duration.default('7d'),
+  // Express "trust proxy": 'loopback' (Nginx on the same host), or a number of proxy hops.
+  TRUST_PROXY: z
+    .string()
+    .default('loopback')
+    .transform((v) => (/^\d+$/.test(v) ? Number(v) : v)),
+  // true = the API process also runs the deploy worker (hosts without background workers).
+  WORKER_IN_PROCESS: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
 
   // API and worker
   DATABASE_URL: z.string().regex(/^mysql:\/\//, 'must be a mysql:// URL'),

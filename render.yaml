@@ -1,0 +1,49 @@
+# Render blueprint: Dashboard → New → Blueprint → pick this repo.
+# Creates the portal (one web service running the API and the worker together) and a Redis-compatible
+# Key Value store, both on the free plan. The database is external: set DATABASE_URL yourself.
+services:
+  - type: web
+    name: deploy-portal
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    # Apply database migrations, then start the API (which also starts the worker).
+    dockerCommand: sh -c "npx prisma migrate deploy && node index.js"
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # The free plan has no background workers, so the API process runs the worker too.
+      - key: WORKER_IN_PROCESS
+        value: 'true'
+      # Small instance: run at most 2 deploys at once.
+      - key: WORKER_CONCURRENCY
+        value: '2'
+      # Render's proxy sits in front of the app; trust one hop for the client IP.
+      - key: TRUST_PROXY
+        value: '1'
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: deploy-portal-redis
+          property: connectionString
+      # Set these in the dashboard when Render asks (they are never stored in the repo):
+      # mysql://USER:PASSWORD@HOST:3306/DATABASE, with special characters in the password URL-encoded
+      - key: DATABASE_URL
+        sync: false
+      # The frontend's address, e.g. https://deploy.example.com
+      - key: APP_URL
+        sync: false
+      # 64 hex characters each: openssl rand -hex 32
+      - key: JWT_SECRET
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+
+  - type: keyvalue
+    name: deploy-portal-redis
+    plan: free
+    # BullMQ needs every key kept; never evict.
+    maxmemoryPolicy: noeviction
+    # Reachable only from services in this Render account.
+    ipAllowList: []

@@ -183,3 +183,22 @@ Nginx and PM2 (`npm install -g pm2`). Run everything as a non-root user.
 
 To update: `git pull && npm ci --omit=dev && npm run release`. A deploy running in the worker
 during a reload is marked `FAILED` (`WORKER_RESTARTED`); reload when nothing is deploying.
+
+## Render (free plan)
+
+`render.yaml` sets up the portal on Render: one web service running the API and the worker
+together (`WORKER_IN_PROCESS=true`, because the free plan has no background workers) and a free
+Key Value store for Redis. MySQL 8 and MariaDB 10.11 are both supported for the database.
+
+1. Push the repo to GitHub, then in Render: **New → Blueprint** → pick the repo.
+2. Fill in the four values Render asks for: `DATABASE_URL`, `APP_URL`, `JWT_SECRET` and
+   `ENCRYPTION_KEY` (`openssl rand -hex 32` for the last two). URL-encode special characters in
+   the database password (`{` → `%7B`, `=` → `%3D`, `#` → `%23`, `@` → `%40`, `:` → `%3A`).
+3. If the database is on cPanel, allow Render to connect: **Remote MySQL** → add Render's outbound
+   IP addresses (service page → Connect → Outbound).
+4. After the first deploy, create the admin from the service's **Shell** tab:
+   `SEED_ADMIN_EMAIL=you@example.com SEED_ADMIN_PASSWORD='...' npx prisma db seed`
+
+Free-plan limits: the service sleeps after 15 minutes without traffic and takes about a minute
+to wake. A deploy running when it falls asleep is marked `WORKER_RESTARTED`, and GitHub
+webhooks sent while it sleeps time out. A paid instance removes both limits.

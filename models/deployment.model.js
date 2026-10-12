@@ -77,23 +77,27 @@ async function list({ limit, cursor, projectId, targetId, status, trigger, from,
 /**
  * The newest deployment of each target, in one query. Returns a Map of targetId -> deployment.
  *
- * Each target reads only its newest row from the (targetId, queuedAt) index (id breaks ties,
- * and InnoDB keeps it in that index too). This stays fast however long the history grows,
- * unlike ROW_NUMBER() over every deploy, which measured 133 ms at 10,000 deploys.
+ * For each target, a subquery reads only its newest id from the (targetId, queuedAt) index
+ * (id breaks ties, and InnoDB keeps it in that index too); one join then fetches those rows.
+ * This stays fast however long the history grows, unlike ROW_NUMBER() over every deploy
+ * (133 ms at 10,000 deploys). It avoids LATERAL so it runs on MariaDB as well as MySQL 8.
  */
 async function lastPerTarget(targetIds, db = prisma) {
   if (targetIds.length === 0) return new Map();
   const rows = await db.$queryRaw`
     SELECT d.id, d.number, d.targetId, d.status, d.\`trigger\`, d.branch, d.commitSha,
            d.queuedAt, d.startedAt, d.finishedAt
-    FROM \`Target\` t
-    JOIN LATERAL (
-      SELECT * FROM \`Deployment\` x
-      WHERE x.targetId = t.id
-      ORDER BY x.queuedAt DESC, x.id DESC
-      LIMIT 1
-    ) d ON TRUE
-    WHERE t.id IN (${Prisma.join(targetIds)})`;
+    FROM (
+      SELECT (
+        SELECT x.id FROM \`Deployment\` x
+        WHERE x.targetId = t.id
+        ORDER BY x.queuedAt DESC, x.id DESC
+        LIMIT 1
+      ) AS lastId
+      FROM \`Target\` t
+      WHERE t.id IN (${Prisma.join(targetIds)})
+    ) latest
+    JOIN \`Deployment\` d ON d.id = latest.lastId`;
   return new Map(rows.map((row) => [row.targetId, row]));
 }
 

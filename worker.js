@@ -1,6 +1,9 @@
 // The deploy worker runs as its own process: `npm run worker`.
 // It takes jobs from the BullMQ "deploys" queue and runs them over SSH, and runs the nightly
 // log clean-up from the "maintenance" queue.
+//
+// On hosts without background workers (Render's free plan), set WORKER_IN_PROCESS=true and the
+// API starts it inside its own process instead (see index.js).
 const { Worker } = require('bullmq');
 const { env } = require('./utils/env');
 const { logger: baseLogger } = require('./utils/logger');
@@ -22,7 +25,7 @@ const logger = baseLogger.child({ process: 'worker' });
 const workers = [];
 const connections = [];
 
-async function main() {
+async function startWorker() {
   await prisma.$queryRaw`SELECT 1`;
   await redis.ping();
 
@@ -57,20 +60,29 @@ async function main() {
   logger.info({ concurrency: env.WORKER_CONCURRENCY }, 'worker ready');
 }
 
-const shutdown = async (signal) => {
-  logger.info(`${signal} received, shutting down`);
-  setTimeout(() => process.exit(1), 10_000).unref();
-  // Running deploys are not waited for; the next start marks them WORKER_RESTARTED.
+/** Stops taking jobs. Running deploys are not waited for; the next start marks them WORKER_RESTARTED. */
+async function stopWorker() {
   await Promise.allSettled(workers.map((w) => w.close(true)));
   await Promise.allSettled(connections.map((c) => c.quit()));
-  await closeConnections();
-  process.exit(0);
-};
+}
 
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
+// `node worker.js` runs the worker as its own process.
+if (require.main === module) {
+  const shutdown = async (signal) => {
+    logger.info(`${signal} received, shutting down`);
+    setTimeout(() => process.exit(1), 10_000).unref();
+    await stopWorker();
+    await closeConnections();
+    process.exit(0);
+  };
 
-main().catch((err) => {
-  logger.fatal({ err }, 'worker failed to start');
-  process.exit(1);
-});
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+  startWorker().catch((err) => {
+    logger.fatal({ err }, 'worker failed to start');
+    process.exit(1);
+  });
+}
+
+module.exports = { startWorker, stopWorker };
