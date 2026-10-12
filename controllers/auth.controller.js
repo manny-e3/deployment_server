@@ -8,17 +8,28 @@ exports.login = async (req, res) => {
   const { user, tokens } = await authService.login({ email, password, ip: req.ip });
   await loginLimiter.reset(req);
   const csrfToken = setSessionCookies(res, tokens);
-  res.json({ ...user, csrfToken });
+  res.json({
+    ...user,
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    csrfToken,
+  });
 };
 
 exports.refresh = async (req, res) => {
   try {
+    const refreshToken = req.body?.refreshToken || req.cookies?.[REFRESH_COOKIE];
     const { user, tokens } = await authService.refresh({
-      refreshToken: req.cookies?.[REFRESH_COOKIE],
+      refreshToken,
       ip: req.ip,
     });
-    setSessionCookies(res, tokens);
-    res.json(user);
+    const csrfToken = setSessionCookies(res, tokens);
+    res.json({
+      ...user,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      csrfToken,
+    });
   } catch (err) {
     clearSessionCookies(res);
     throw err;
@@ -26,7 +37,8 @@ exports.refresh = async (req, res) => {
 };
 
 exports.logout = async (req, res) => {
-  await authService.logout({ refreshToken: req.cookies?.[REFRESH_COOKIE], ip: req.ip });
+  const refreshToken = req.body?.refreshToken || req.cookies?.[REFRESH_COOKIE];
+  await authService.logout({ refreshToken, ip: req.ip });
   clearSessionCookies(res);
   res.status(204).end();
 };

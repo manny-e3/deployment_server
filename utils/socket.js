@@ -41,10 +41,14 @@ function createSocketServer(httpServer) {
     },
   });
 
-  // The handshake carries the browser's cookies; the same session check as the HTTP API.
+  // The handshake carries the browser's cookies or auth.token payload; the same session check as the HTTP API.
   io.use(async (socket, next) => {
     try {
-      const token = readCookie(socket.handshake.headers.cookie, ACCESS_COOKIE);
+      const authHeader = socket.handshake.headers.authorization;
+      const bearer = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+      const authToken = socket.handshake.auth?.token;
+      const cookieToken = readCookie(socket.handshake.headers.cookie, ACCESS_COOKIE);
+      const token = authToken || bearer || cookieToken;
       socket.data.user = await resolveSession(token);
       next();
     } catch {

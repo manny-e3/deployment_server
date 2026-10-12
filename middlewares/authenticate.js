@@ -32,9 +32,15 @@ async function resolveSession(token) {
   return { id: state.id, name: state.name, email: state.email, role: state.role };
 }
 
-/** Reads the access-token cookie and sets req.user. */
+/** Reads the access-token (Bearer token header or cookie) and sets req.user. */
 async function authenticate(req, _res, next) {
-  req.user = await resolveSession(req.cookies?.[ACCESS_COOKIE]);
+  const authHeader = req.get('authorization');
+  let bearerToken;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    bearerToken = authHeader.slice(7).trim();
+  }
+  const token = bearerToken || req.cookies?.[ACCESS_COOKIE];
+  req.user = await resolveSession(token);
   next();
 }
 

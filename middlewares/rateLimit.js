@@ -61,7 +61,9 @@ const apiLimiter = rateLimit({
   windowSec: 60,
   key: (req) => {
     try {
-      return `user:${verifyAccessToken(req.cookies?.[ACCESS_COOKIE]).sub}`;
+      const auth = req.get('authorization');
+      const token = (auth && auth.startsWith('Bearer ') ? auth.slice(7).trim() : null) || req.cookies?.[ACCESS_COOKIE];
+      return `user:${verifyAccessToken(token).sub}`;
     } catch {
       return `ip:${req.ip}`;
     }
