@@ -41,6 +41,7 @@ function createApp() {
         return callback(null, false);
       },
       credentials: true,
+      exposedHeaders: ['X-CSRF-Token', 'X-Request-Id'],
     })
   );
   app.use(cookieParser());

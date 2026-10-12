@@ -7,8 +7,8 @@ exports.login = async (req, res) => {
   const { email, password } = req.body;
   const { user, tokens } = await authService.login({ email, password, ip: req.ip });
   await loginLimiter.reset(req);
-  setSessionCookies(res, tokens);
-  res.json(user);
+  const csrfToken = setSessionCookies(res, tokens);
+  res.json({ ...user, csrfToken });
 };
 
 exports.refresh = async (req, res) => {
