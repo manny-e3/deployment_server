@@ -25,7 +25,24 @@ function createApp() {
   app.use(httpLogger);
   app.use(helmet());
   // Only the portal's own frontend may call the API from a browser.
-  app.use(cors({ origin: env.APP_URL, credentials: true }));
+    const allowedOrigins = [
+    env.APP_URL,
+    'https://deploy.travaiq.com',
+    'http://localhost:5173',
+    'http://localhost:3000',
+  ].filter(Boolean);
+
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+        return callback(null, false);
+      },
+      credentials: true,
+    })
+  );
   app.use(cookieParser());
 
   // Webhooks need the exact raw body to check the signature, so they come before express.json().

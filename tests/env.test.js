@@ -21,6 +21,13 @@ describe('env config', () => {
     assert.equal(env.SENTRY_DSN, undefined);
   });
 
+  it('treats blank, space-only and empty-quoted values as unset, and trims the rest', () => {
+    for (const blank of ['', '   ', '""', "''"]) {
+      assert.equal(parseEnv({ ...valid, SENTRY_DSN: blank }).SENTRY_DSN, undefined);
+    }
+    assert.equal(parseEnv({ ...valid, PORT: ' 9000 ' }).PORT, 9000);
+  });
+
   it('names every missing or malformed variable in one error', () => {
     assert.throws(
       () =>

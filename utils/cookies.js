@@ -6,7 +6,13 @@ const REFRESH_COOKIE = 'refresh_token';
 const CSRF_COOKIE = 'csrf_token';
 
 // Secure is off outside production so cookies work over plain http://localhost.
-const base = { secure: env.NODE_ENV === 'production', sameSite: 'strict', path: '/' };
+// In production cross-site (deploy.travaiq.com -> onrender.com), SameSite=None and Secure=true are mandatory
+const isProd = env.NODE_ENV === 'production';
+const base = {
+  secure: isProd,
+  sameSite: isProd ? 'none' : 'lax',
+  path: '/',
+};
 
 /** Sets the session cookies. JavaScript can read only the CSRF cookie. */
 function setSessionCookies(res, { accessToken, refreshToken }) {

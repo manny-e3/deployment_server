@@ -22,7 +22,24 @@ function readCookie(header = '', name) {
 }
 
 function createSocketServer(httpServer) {
-  const io = new Server(httpServer, { cors: { origin: env.APP_URL, credentials: true } });
+    const allowedOrigins = [
+    env.APP_URL,
+    'https://deploy.travaiq.com',
+    'http://localhost:5173',
+    'http://localhost:3000',
+  ].filter(Boolean);
+
+  const io = new Server(httpServer, {
+    cors: {
+      origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+        return callback(new Error('Not allowed by CORS'));
+      },
+      credentials: true,
+    },
+  });
 
   // The handshake carries the browser's cookies; the same session check as the HTTP API.
   io.use(async (socket, next) => {

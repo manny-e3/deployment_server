@@ -50,9 +50,16 @@ const envSchema = z.object({
   LOG_RETENTION_DAYS: positiveInt.default(90),
 });
 
-/** Checks env vars, treating empty strings as unset. Throws one message listing every bad key. */
+/**
+ * Checks env vars. Values are trimmed, and empty values ("", spaces, or "" / '' pasted from a
+ * .env file) count as unset. Throws one message listing every bad key.
+ */
 function parseEnv(source) {
-  const cleaned = Object.fromEntries(Object.entries(source).filter(([, v]) => v !== ''));
+  const cleaned = Object.fromEntries(
+    Object.entries(source)
+      .map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v])
+      .filter(([, v]) => v !== '' && v !== '""' && v !== "''"),
+  );
   const result = envSchema.safeParse(cleaned);
   if (!result.success) {
     const lines = result.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`);
