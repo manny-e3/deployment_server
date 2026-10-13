@@ -82,11 +82,7 @@ const updateServerBody = z
     passphrase: z.string().min(1).max(1024).nullable().optional(),
   })
   .refine((b) => Object.keys(b).length > 0, 'send at least one field to change')
-  .refine((b) => b.authType === undefined || b.secret !== undefined, {
-    path: ['secret'],
-    message: 'is required when changing authType',
-  })
-  .refine((b) => b.authType !== 'KEY' || looksLikePrivateKey(b.secret), {
+  .refine((b) => b.secret === undefined || b.authType !== 'KEY' || looksLikePrivateKey(b.secret), {
     path: ['secret'],
     message: 'must be a private key in PEM or OpenSSH format',
   });
