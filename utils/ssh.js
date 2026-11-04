@@ -50,20 +50,63 @@ function connect({
     const conn = new Client();
     let fingerprint;
     let keyChanged = false;
+    let settled = false;
+
+    const cleanup = () => {
+      conn.removeListener('ready', onReady);
+      conn.removeListener('error', onError);
+      conn.removeListener('close', onClose);
+      conn.removeListener('end', onEnd);
+    };
+
+    const onReady = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({ conn, fingerprint });
+    };
+
+    const onError = (err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      conn.end();
+      reject(
+        keyChanged
+          ? new SshError('HOST_KEY_CHANGED', `The host key of ${target} has changed`, {
+              expected: expectedFingerprint,
+              received: fingerprint,
+            })
+          : toSshError(err, target),
+      );
+    };
+
+    const onClose = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(
+        keyChanged
+          ? new SshError('HOST_KEY_CHANGED', `The host key of ${target} has changed`, {
+              expected: expectedFingerprint,
+              received: fingerprint,
+            })
+          : new SshError('UNREACHABLE', `SSH connection to ${target} was closed by the remote host`),
+      );
+    };
+
+    const onEnd = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new SshError('UNREACHABLE', `SSH connection to ${target} ended unexpectedly`));
+    };
 
     conn
-      .on('ready', () => resolve({ conn, fingerprint }))
-      .on('error', (err) => {
-        conn.end();
-        reject(
-          keyChanged
-            ? new SshError('HOST_KEY_CHANGED', `The host key of ${target} has changed`, {
-                expected: expectedFingerprint,
-                received: fingerprint,
-              })
-            : toSshError(err, target),
-        );
-      })
+      .on('ready', onReady)
+      .on('error', onError)
+      .on('close', onClose)
+      .on('end', onEnd)
       // Some servers ask for the password through keyboard-interactive.
       .on('keyboard-interactive', (_name, _instructions, _lang, prompts, finish) =>
         finish(prompts.map(() => secret)),
@@ -85,8 +128,12 @@ function connect({
         },
       });
     } catch (err) {
-      conn.end();
-      reject(toSshError(err, target));
+      if (!settled) {
+        settled = true;
+        cleanup();
+        conn.end();
+        reject(toSshError(err, target));
+      }
     }
   });
 }

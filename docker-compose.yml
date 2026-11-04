@@ -76,6 +76,9 @@ services:
     command: ['sh', '-c', 'npx prisma migrate deploy && node index.js']
     ports:
       - '${PORT:-4000}:${PORT:-4000}'
+    extra_hosts:
+      - "101-PHP-01.fmdqgroup.com:10.10.15.59"
+      - "101-PHP-01:10.10.15.59"
     volumes:
       - ./logs:/app/logs
     depends_on:
@@ -104,6 +107,9 @@ services:
       DATABASE_URL: mysql://portal:portal@mysql:3306/portal
       REDIS_URL: redis://redis:6379
     command: ['node', 'worker.js']
+    extra_hosts:
+      - "101-PHP-01.fmdqgroup.com:10.10.15.59"
+      - "101-PHP-01:10.10.15.59"
     volumes:
       - ./logs:/app/logs
     depends_on:

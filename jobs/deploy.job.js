@@ -138,7 +138,14 @@ async function runDeployment(deploymentId, options = {}) {
       if (pid) {
         await ssh.exec(conn, 'bash -s', { stdin: killTreeScript(pid), timeoutMs: 5000 }).catch(() => {});
       }
-      conn.end();
+      try {
+        channel.close();
+      } catch (_) {}
+      try {
+        conn.destroy();
+      } catch (_) {
+        conn.end();
+      }
     };
     timers.push(setTimeout(() => stop('TIMEOUT'), timeoutMs));
     timers.push(
@@ -149,11 +156,19 @@ async function runDeployment(deploymentId, options = {}) {
 
     const exitCode = await new Promise((resolve) => {
       let code = null;
+      let settled = false;
+      const done = (c) => {
+        if (settled) return;
+        settled = true;
+        resolve(c);
+      };
       channel.on('data', (chunk) => log.write('STDOUT', chunk));
       channel.stderr.on('data', (chunk) => log.write('STDERR', chunk));
       channel.on('exit', (c) => (code = c));
-      channel.on('close', () => resolve(code));
-      conn.on('close', () => resolve(code));
+      channel.on('close', () => done(code));
+      conn.on('close', () => done(code));
+      conn.on('end', () => done(code));
+      conn.on('error', () => done(code ?? 1));
     });
     result.exitCode = exitCode;
 

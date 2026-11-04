@@ -194,16 +194,34 @@ async function importSql(targetId, data, actor, ip) {
   try {
     // 1. Create database if it doesn't already exist
     const safeDbName = dbName.replace(/[`"';\s]/g, '');
-    const createSql = `CREATE DATABASE IF NOT EXISTS \`${safeDbName}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`;
-    const createCmd = `MYSQL_PWD=${shellQuote(dbPass)} mysql --max-allowed-packet=128M -h ${shellQuote(dbHost)} -P ${shellQuote(dbPort)} -u ${shellQuote(dbUser)} -e ${shellQuote(createSql)}`;
+    const safeDbUser = dbUser.replace(/[`"';\s]/g, '');
+    const resolvedHost = (!dbHost || dbHost === 'localhost') ? '127.0.0.1' : dbHost.replace(/[`"';\s]/g, '');
+    const resolvedPort = String(dbPort || '3306').replace(/\D/g, '');
+
+    const pwdExport = (dbPass && dbPass.trim())
+      ? `export MYSQL_PWD=${shellQuote(dbPass)}`
+      : 'unset MYSQL_PWD';
+
+    const createScript = [
+      'export PATH="/c/xampp/mysql/bin:/xampp/mysql/bin:/usr/local/mysql/bin:/usr/local/bin:/usr/bin:$PATH"',
+      pwdExport,
+      `mysql --max-allowed-packet=128M -h ${shellQuote(resolvedHost)} -P ${shellQuote(resolvedPort)} -u ${shellQuote(safeDbUser)} -e "CREATE DATABASE IF NOT EXISTS \\\`${safeDbName}\\\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"`
+    ].filter(Boolean).join('\n');
+
     try {
-      await ssh.exec(conn, createCmd, { timeoutMs: 30000 });
+      await ssh.exec(conn, 'bash -l -s', { stdin: createScript, timeoutMs: 30000 });
     } catch (e) {
       // Ignore if user lacks global CREATE DATABASE privilege on shared cPanel
     }
 
     // 2. Import SQL dump into database
-    const importCmd = `MYSQL_PWD=${shellQuote(dbPass)} mysql --max-allowed-packet=128M -h ${shellQuote(dbHost)} -P ${shellQuote(dbPort)} -u ${shellQuote(dbUser)} --database=${shellQuote(safeDbName)}`;
+    const importInner = [
+      'export PATH="/c/xampp/mysql/bin:/xampp/mysql/bin:/usr/local/mysql/bin:/usr/local/bin:/usr/bin:$PATH"',
+      pwdExport,
+      `mysql --max-allowed-packet=128M -h ${shellQuote(resolvedHost)} -P ${shellQuote(resolvedPort)} -u ${shellQuote(safeDbUser)} --database=${shellQuote(safeDbName)}`
+    ].filter(Boolean).join('; ');
+
+    const importCmd = `bash -l -c "${importInner.replace(/"/g, '\\"')}"`;
     const resImport = await ssh.exec(conn, importCmd, { stdin: sqlContent, timeoutMs: 600000 });
 
     if (resImport.code !== 0) {
@@ -254,8 +272,16 @@ async function runArtisan(targetId, command, actor, ip) {
   });
 
   try {
-    const fullCmd = `cd ${shellQuote(target.path)} && php artisan ${cleanCmd}`;
-    const res = await ssh.exec(conn, fullCmd, { timeoutMs: 60000 });
+    const rawPath = target.path.replace(/\\/g, '/');
+    const safePath = /^\/(xampp|inetpub|Users|Program Files|Windows)/i.test(rawPath)
+      ? `/c${rawPath}`
+      : rawPath;
+    const artisanScript = [
+      'export PATH="/c/xampp/php:/xampp/php:/usr/local/bin:/usr/bin:$PATH"',
+      `cd ${shellQuote(safePath)}`,
+      `php artisan ${cleanCmd}`
+    ].join('\n');
+    const res = await ssh.exec(conn, 'bash -l -s', { stdin: artisanScript, timeoutMs: 60000 });
 
     await audit.record({
       userId: actor.id,

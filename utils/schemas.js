@@ -102,10 +102,12 @@ const branch = z
 const repoUrl = z
   .string()
   .trim()
-  .max(500)
-  .regex(
-    /^(git@[A-Za-z0-9.-]+:[A-Za-z0-9._/-]+|ssh:\/\/[A-Za-z0-9@._:/-]+|https:\/\/[A-Za-z0-9._:/-]+)$/,
-    'must be an SSH (git@host:org/repo.git) or HTTPS Git URL',
+  .min(1, 'Git repository URL is required')
+  .max(1000)
+  .refine(
+    (url) =>
+      /^(git@[A-Za-z0-9_.-]+:[A-Za-z0-9_./~-]+|ssh:\/\/[^\s"'<>]+|https?:\/\/[^\s"'<>]+)$/i.test(url),
+    { message: 'must be an SSH (git@host:org/repo.git) or HTTPS Git URL' }
   );
 
 const targetPath = z
