@@ -114,8 +114,14 @@ const repoUrl = z
     return u;
   })
   .refine(
-    (url) => !/^(github_pat_|ghp_|glpat-)[A-Za-z0-9_]+$/.test(url),
-    { message: 'This is only an access token. Use format: https://<token>@github.com/<owner>/<repo>.git' }
+    (url) => {
+      const clean = url.replace(/^https?:\/\//i, '');
+      if (/^(github_pat_|ghp_|glpat-)[A-Za-z0-9_]+/i.test(clean) && !url.includes('@') && !url.includes('.com') && !url.includes('.org')) {
+        return false;
+      }
+      return true;
+    },
+    { message: 'You entered an access token without a repository URL. Use format: https://<token>@github.com/<owner>/<repo>.git' }
   )
   .refine(
     (url) =>
