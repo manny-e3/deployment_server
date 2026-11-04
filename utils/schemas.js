@@ -104,6 +104,19 @@ const repoUrl = z
   .trim()
   .min(1, 'Git repository URL is required')
   .max(1000)
+  .transform((url) => {
+    let u = url.trim().replace(/^["']+|["']+$/g, '');
+    if (!u.startsWith('http://') && !u.startsWith('https://') && !u.startsWith('git@') && !u.startsWith('ssh://')) {
+      if (/^[a-zA-Z0-9_.-]+@/.test(u) || u.includes('github.com') || u.includes('gitlab.com') || u.includes('bitbucket.org')) {
+        u = `https://${u}`;
+      }
+    }
+    return u;
+  })
+  .refine(
+    (url) => !/^(github_pat_|ghp_|glpat-)[A-Za-z0-9_]+$/.test(url),
+    { message: 'This is only an access token. Use format: https://<token>@github.com/<owner>/<repo>.git' }
+  )
   .refine(
     (url) =>
       /^(git@[A-Za-z0-9_.-]+:[A-Za-z0-9_./~-]+|ssh:\/\/[^\s"'<>]+|https?:\/\/[^\s"'<>]+)$/i.test(url),
