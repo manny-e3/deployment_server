@@ -56,6 +56,16 @@ function createApp() {
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
   app.use('/api/v1', routes);
 
+  // Root ping endpoint for load balancer & deployment health checks
+  app.get('/', (_req, res) => {
+    res.json({
+      status: 'ok',
+      service: 'Slipway Control Plane API',
+      version: '0.1.0',
+      timestamp: new Date().toISOString(),
+    });
+  });
+
   app.use(notFound);
   app.use(errorHandler);
 
