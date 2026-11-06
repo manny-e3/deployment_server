@@ -25,6 +25,7 @@
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
+    "@noble/hashes": "^2.4.0",
     "@prisma/client": "^6.19.3",
     "argon2": "^0.45.1",
     "bullmq": "^5.81.5",
