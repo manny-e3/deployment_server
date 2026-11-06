@@ -29,8 +29,17 @@ function normalizeDeploymentPath(rawPath) {
  *   __PREV__ <sha|none>      the commit before this deploy
  *   __COMMIT__ <sha> <msg>   the commit after it
  */
-function buildScript({ repoUrl, branch, path, sha, envVars = {}, preDeploy = '', postDeploy = '' }) {
+function buildScript({ repoUrl, branch, path, sha, envVars = {}, preDeploy = '', postDeploy = '', healthCheckUrl = '' }) {
   const normalizedPath = normalizeDeploymentPath(path);
+  let isRootByUrl = 0;
+  if (healthCheckUrl) {
+    try {
+      const u = new URL(healthCheckUrl);
+      if (u.pathname === '/' || u.pathname === '') {
+        isRootByUrl = 1;
+      }
+    } catch (_) {}
+  }
   const lines = [
     'set -euo pipefail',
     'echo "__PID__ $$"',
@@ -83,10 +92,12 @@ function buildScript({ repoUrl, branch, path, sha, envVars = {}, preDeploy = '',
   lines.push(
     '',
     'DIR_BASENAME=$(basename "$DIR")',
-    'IS_ROOT_WEB_DIR=0',
-    'case "$DIR_BASENAME" in',
-    '  public_html|html|www|public|htdocs|web) IS_ROOT_WEB_DIR=1 ;;',
-    'esac',
+    `IS_ROOT_WEB_DIR=${isRootByUrl}`,
+    'if [ "$IS_ROOT_WEB_DIR" -eq 0 ]; then',
+    '  case "$DIR_BASENAME" in',
+    '    public_html|html|www|public|htdocs|web) IS_ROOT_WEB_DIR=1 ;;',
+    '  esac',
+    'fi',
     '',
     'if [ "$IS_ROOT_WEB_DIR" -eq 1 ]; then',
     '  # Domain root deployment: remove any subdirectory router base overrides from .env files',
@@ -109,11 +120,13 @@ function buildScript({ repoUrl, branch, path, sha, envVars = {}, preDeploy = '',
     '  *) [ -d "/c/xampp" ] && IS_WIN=1 || true ;;',
     'esac',
     '',
-    '# Sync compiled assets into web root if dist/ or build/ was produced',
+    '# Sync compiled assets into web root if dist/, build/, or current/dist/ was produced',
     'if [ -d "$DIR/dist" ] && [ -f "$DIR/dist/index.html" ]; then',
     '  cp -rf "$DIR/dist/"* "$DIR/" 2>/dev/null || true',
     'elif [ -d "$DIR/build" ] && [ -f "$DIR/build/index.html" ]; then',
     '  cp -rf "$DIR/build/"* "$DIR/" 2>/dev/null || true',
+    'elif [ -d "$DIR/current/dist" ] && [ -f "$DIR/current/dist/index.html" ]; then',
+    '  cp -rf "$DIR/current/dist/"* "$DIR/" 2>/dev/null || true',
     'fi',
     '',
     '# 1. Universal SPA Auto-Detection, <base href> Injection & .htaccess Routing (Linux & Windows)',

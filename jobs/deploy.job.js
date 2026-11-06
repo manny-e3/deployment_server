@@ -123,6 +123,7 @@ async function runDeployment(deploymentId, options = {}) {
       envVars: Object.fromEntries(target.envVars.map((v) => [v.key, decrypt(v.valueEnc)])),
       preDeploy: target.preDeploy,
       postDeploy: target.postDeploy,
+      healthCheckUrl: target.healthCheckUrl,
     });
     const channel = await ssh.spawn(conn, 'bash -l -s', script);
 
