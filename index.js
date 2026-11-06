@@ -60,7 +60,7 @@ function createApp() {
   app.get('/', (_req, res) => {
     res.json({
       status: 'ok',
-      service: 'Slipway Control Plane API',
+      service: 'PortalOps Control Plane API',
       version: '0.1.0',
       timestamp: new Date().toISOString(),
     });
