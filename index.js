@@ -101,12 +101,18 @@ function start() {
   });
   const sockets = createSocketServer(server);
 
-  // One process for API and worker, for hosts without background workers. Run no other worker then.
-  const worker = env.WORKER_IN_PROCESS ? require('./worker') : null;
-  worker?.startWorker().catch((err) => {
-    logger.fatal({ err }, 'worker failed to start');
-    process.exit(1);
-  });
+  // One process for API and worker, for hosts without background workers.
+  // Resilient: worker warning should never crash-loop the HTTP API server.
+  if (env.WORKER_IN_PROCESS) {
+    try {
+      const worker = require('./worker');
+      worker.startWorker().catch((err) => {
+        logger.warn({ err: err.message }, 'background worker unavailable or waiting for redis; API server remains online');
+      });
+    } catch (err) {
+      logger.warn({ err: err.message }, 'worker module failed to load');
+    }
+  }
 
   const shutdown = (signal) => {
     logger.info(`${signal} received, shutting down`);
