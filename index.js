@@ -27,6 +27,8 @@ function createApp() {
   // Only the portal's own frontend may call the API from a browser.
     const allowedOrigins = [
     env.APP_URL,
+    'https://portalops.online',
+    'https://www.portalops.online',
     'https://deploy.travaiq.com',
     'http://localhost:5173',
     'http://localhost:3000',
@@ -73,12 +75,29 @@ function createApp() {
 }
 
 function start() {
-  const server = createApp().listen(env.PORT, (err) => {
+  const fs = require('fs');
+  const socketPath = process.env.SOCKET_PATH;
+  if (socketPath) {
+    try {
+      fs.unlinkSync(socketPath);
+    } catch (_) {}
+  }
+
+  const listenTarget = socketPath || env.PORT;
+
+  const server = createApp().listen(listenTarget, (err) => {
     if (err) {
       logger.fatal({ err }, 'API failed to start');
       process.exit(1);
     }
-    logger.info(`API listening on http://localhost:${env.PORT}`);
+    if (socketPath) {
+      try {
+        fs.chmodSync(socketPath, 0o777);
+      } catch (_) {}
+      logger.info(`API listening on UNIX socket ${socketPath}`);
+    } else {
+      logger.info(`API listening on http://localhost:${env.PORT}`);
+    }
   });
   const sockets = createSocketServer(server);
 
@@ -93,6 +112,11 @@ function start() {
     logger.info(`${signal} received, shutting down`);
     setTimeout(() => process.exit(1), 10_000).unref();
     sockets.close();
+    if (socketPath) {
+      try {
+        fs.unlinkSync(socketPath);
+      } catch (_) {}
+    }
     server.close(async () => {
       await worker?.stopWorker();
       await closeConnections();
