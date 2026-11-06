@@ -10,6 +10,10 @@ const EXEMPT_PATHS = new Set([
   '/auth/refresh',
   '/auth/forgot-password',
   '/auth/reset-password',
+  '/api/v1/auth/login',
+  '/api/v1/auth/refresh',
+  '/api/v1/auth/forgot-password',
+  '/api/v1/auth/reset-password',
 ]);
 
 const sameToken = (a, b) => {
@@ -23,14 +27,31 @@ const sameToken = (a, b) => {
  * Double-submit check & Origin Verification:
  * 1. Safe methods (GET, HEAD, OPTIONS) and auth bootstrap (login, refresh) are exempt.
  * 2. On same-origin requests or when cookies are present, the double-submit token match (cookie === header) passes.
- * 3. On cross-origin requests from our verified frontend (deploy.travaiq.com), the browser's
+ * 3. On cross-origin requests from our verified frontend (e.g. portalops.online), the browser's
  *    immutable Origin header is verified against the allowed origins whitelist.
  */
 function csrf(req, _res, next) {
   if (SAFE_METHODS.has(req.method)) return next();
 
-  const normPath = (req.path || '').replace(/\/$/, '');
-  if (EXEMPT_PATHS.has(normPath) || EXEMPT_PATHS.has(req.path)) return next();
+  const normPath = (req.path || '').replace(/\/+$/, '');
+  const origPath = (req.originalUrl ? req.originalUrl.split('?')[0] : '').replace(/\/+$/, '');
+  const strippedOrigPath = origPath.replace(/^\/api\/v\d+/, '');
+
+  if (
+    EXEMPT_PATHS.has(normPath) ||
+    EXEMPT_PATHS.has(origPath) ||
+    EXEMPT_PATHS.has(strippedOrigPath) ||
+    normPath.endsWith('/auth/login') ||
+    normPath.endsWith('/auth/refresh') ||
+    normPath.endsWith('/auth/forgot-password') ||
+    normPath.endsWith('/auth/reset-password') ||
+    origPath.endsWith('/auth/login') ||
+    origPath.endsWith('/auth/refresh') ||
+    origPath.endsWith('/auth/forgot-password') ||
+    origPath.endsWith('/auth/reset-password')
+  ) {
+    return next();
+  }
 
   const cookie = req.cookies?.[CSRF_COOKIE];
   const header = req.get('x-csrf-token');
@@ -40,6 +61,10 @@ function csrf(req, _res, next) {
   const origin = req.get('origin');
   const allowed = [
     env.APP_URL,
+    'https://portalops.online',
+    'https://www.portalops.online',
+    'http://portalops.online',
+    'http://www.portalops.online',
     'https://deploy.travaiq.com',
     'http://localhost:5173',
     'http://localhost:3000',
