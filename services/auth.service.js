@@ -1,4 +1,4 @@
-const argon2 = require('argon2');
+const { hashPassword, verifyPassword } = require('../utils/password');
 const prisma = require('../models/prisma');
 const userModel = require('../models/user.model');
 const refreshTokenModel = require('../models/refreshToken.model');
@@ -13,11 +13,9 @@ const {
   signAccessToken,
 } = require('../utils/tokens');
 
-const hashPassword = (password) => argon2.hash(password, { type: argon2.argon2id });
-
 // Checked against when the email is unknown, so a wrong email takes as long as a wrong password.
 let dummyHash;
-const getDummyHash = () => (dummyHash ??= hashPassword('not-a-real-password'));
+const getDummyHash = async () => (dummyHash ??= await hashPassword('not-a-real-password'));
 
 const toPublic = ({ id, name, email, role, isActive, lastLoginAt, createdAt }) => ({
   id,
@@ -52,7 +50,7 @@ async function endAllSessions(userId, db = prisma) {
 
 async function login({ email, password, ip }) {
   const user = await userModel.findByEmailWithHash(email);
-  const passwordOk = await argon2.verify(user?.passwordHash ?? (await getDummyHash()), password);
+  const passwordOk = await verifyPassword(user?.passwordHash ?? (await getDummyHash()), password);
 
   if (!user || !passwordOk || !user.isActive) {
     const reason = !user ? 'unknown_email' : !passwordOk ? 'wrong_password' : 'inactive';
@@ -115,7 +113,7 @@ async function logout({ refreshToken, ip }) {
 /** Changes the password, logs out every other session and returns a new pair for this one. */
 async function changePassword({ userId, currentPassword, newPassword, ip }) {
   const user = await userModel.findByIdWithHash(userId);
-  if (!user || !(await argon2.verify(user.passwordHash, currentPassword))) {
+  if (!user || !(await verifyPassword(user.passwordHash, currentPassword))) {
     throw new BadRequest('INVALID_CURRENT_PASSWORD', 'Your current password is wrong');
   }
 

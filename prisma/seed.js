@@ -1,4 +1,4 @@
-const argon2 = require('argon2');
+const { hashPassword } = require('../utils/password');
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
@@ -18,7 +18,7 @@ async function main() {
     create: {
       name: 'Portal Admin',
       email,
-      passwordHash: await argon2.hash(password, { type: argon2.argon2id }),
+      passwordHash: await hashPassword(password),
       role: 'ADMIN',
     },
   });
