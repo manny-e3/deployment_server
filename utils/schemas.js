@@ -16,7 +16,7 @@ const email = z
   .pipe(z.email('must be a valid email address').max(191));
 const newPassword = z
   .string()
-  .min(12, 'must be at least 12 characters')
+  .min(6, 'must be at least 6 characters')
   .max(128, 'must be at most 128 characters');
 const name = z.string().trim().min(1).max(191);
 
@@ -25,6 +25,13 @@ const loginBody = z.object({ email, password: z.string().min(1).max(128) });
 
 const changePasswordBody = z.object({
   currentPassword: z.string().min(1).max(128),
+  newPassword,
+});
+
+const forgotPasswordBody = z.object({ email });
+
+const resetPasswordBody = z.object({
+  token: z.string().min(1, 'Token is required'),
   newPassword,
 });
 
@@ -233,6 +240,8 @@ module.exports = {
   paginationQuery,
   loginBody,
   changePasswordBody,
+  forgotPasswordBody,
+  resetPasswordBody,
   createUserBody,
   updateUserBody,
   createServerBody,

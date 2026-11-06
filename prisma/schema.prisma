@@ -53,8 +53,9 @@ model User {
   lastLoginAt   DateTime?
   createdAt     DateTime       @default(now())
   deployments   Deployment[]
-  auditLogs     AuditLog[]
-  refreshTokens RefreshToken[]
+  auditLogs           AuditLog[]
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
 }
 
 model RefreshToken {
@@ -63,6 +64,18 @@ model RefreshToken {
   tokenHash String    @unique @db.Char(64)
   expiresAt DateTime
   revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique @db.Char(64)
+  expiresAt DateTime
+  usedAt    DateTime?
   createdAt DateTime  @default(now())
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 

@@ -4,8 +4,13 @@ const { Forbidden } = require('../utils/errors');
 const { env } = require('../utils/env');
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-// Login and refresh do not check existing CSRF token
-const EXEMPT_PATHS = new Set(['/auth/login', '/auth/refresh']);
+// Auth bootstrap & password recovery do not check existing CSRF token
+const EXEMPT_PATHS = new Set([
+  '/auth/login',
+  '/auth/refresh',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+]);
 
 const sameToken = (a, b) => {
   if (!a || !b) return false;

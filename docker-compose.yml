@@ -86,6 +86,7 @@ services:
       - ./jobs:/app/jobs
       - ./models:/app/models
       - ./routes:/app/routes
+      - ./controllers:/app/controllers
     depends_on:
       mysql:
         condition: service_healthy
@@ -122,6 +123,7 @@ services:
       - ./jobs:/app/jobs
       - ./models:/app/models
       - ./routes:/app/routes
+      - ./controllers:/app/controllers
     depends_on:
       api:
         condition: service_healthy

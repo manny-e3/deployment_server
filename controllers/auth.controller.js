@@ -57,3 +57,27 @@ exports.changePassword = async (req, res) => {
   setSessionCookies(res, tokens);
   res.status(204).end();
 };
+
+exports.forgotPassword = async (req, res) => {
+  const result = await authService.forgotPassword({
+    email: req.body.email,
+    ip: req.ip,
+  });
+  res.json(result);
+};
+
+exports.verifyResetToken = async (req, res) => {
+  const result = await authService.verifyResetToken({
+    token: req.query.token,
+  });
+  res.json(result);
+};
+
+exports.resetPassword = async (req, res) => {
+  const result = await authService.resetPassword({
+    token: req.body.token,
+    newPassword: req.body.newPassword,
+    ip: req.ip,
+  });
+  res.json(result);
+};

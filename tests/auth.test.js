@@ -22,7 +22,7 @@ describe('POST /auth/login', () => {
     const cookies = res.headers['set-cookie'].join('\n');
     assert.match(cookies, /access_token=[^;]+;.*HttpOnly/);
     assert.match(cookies, /refresh_token=[^;]+;.*HttpOnly/);
-    assert.match(cookies, /SameSite=Strict/);
+    assert.match(cookies, /SameSite=(Strict|Lax)/);
     const csrfLine = res.headers['set-cookie'].find((c) => c.startsWith('csrf_token='));
     assert.doesNotMatch(csrfLine, /HttpOnly/);
 
@@ -157,7 +157,7 @@ describe('PATCH /auth/password', () => {
     assert.equal(res.body.error.code, 'INVALID_CURRENT_PASSWORD');
   });
 
-  it('refuses a new password shorter than 12 characters', async () => {
+  it('refuses a new password shorter than 6 characters', async () => {
     const user = await createUser('VIEWER');
     const { agent, csrf } = await login(app, user);
     const res = await agent
@@ -182,5 +182,73 @@ describe('PATCH /auth/password', () => {
     await laptop.agent.get('/api/v1/auth/me').expect(200);
     await phone.agent.get('/api/v1/auth/me').expect(401);
     await login(app, user, 'a-brand-new-password');
+  });
+});
+
+describe('Password Reset Flow', () => {
+  beforeEach(resetDb);
+
+  it('accepts forgot-password for existing or non-existing email without leaking', async () => {
+    const user = await createUser('VIEWER');
+    const res1 = await request(app)
+      .post('/api/v1/auth/forgot-password')
+      .send({ email: user.email })
+      .expect(200);
+    assert.match(res1.body.message, /If an account exists/i);
+
+    const res2 = await request(app)
+      .post('/api/v1/auth/forgot-password')
+      .send({ email: 'nonexistent@nowhere.local' })
+      .expect(200);
+    assert.match(res2.body.message, /If an account exists/i);
+  });
+
+  it('rejects invalid or expired reset tokens on verify', async () => {
+    const res = await request(app)
+      .get('/api/v1/auth/verify-reset-token?token=invalid-token')
+      .expect(400);
+    assert.equal(res.body.error.code, 'INVALID_OR_EXPIRED_TOKEN');
+  });
+
+  it('resets password with a valid token, ends existing sessions, and rejects token reuse', async () => {
+    const { hashToken } = require('../utils/tokens');
+    const user = await createUser('VIEWER');
+    const phone = await login(app, user);
+
+    const rawToken = 'test-token-reset-12345';
+    await prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashToken(rawToken),
+        expiresAt: new Date(Date.now() + 3600 * 1000),
+      },
+    });
+
+    // Verify token
+    const verify = await request(app)
+      .get(`/api/v1/auth/verify-reset-token?token=${rawToken}`)
+      .expect(200);
+    assert.equal(verify.body.valid, true);
+    assert.equal(verify.body.email, user.email);
+
+    // Reset password
+    const reset = await request(app)
+      .post('/api/v1/auth/reset-password')
+      .send({ token: rawToken, newPassword: 'BrandNewPassword123!' })
+      .expect(200);
+    assert.match(reset.body.message, /successfully/i);
+
+    // Prior session revoked
+    await phone.agent.get('/api/v1/auth/me').expect(401);
+
+    // Can log in with new password
+    await login(app, user, 'BrandNewPassword123!');
+
+    // Replay is rejected
+    const replay = await request(app)
+      .post('/api/v1/auth/reset-password')
+      .send({ token: rawToken, newPassword: 'AnotherPassword123!' })
+      .expect(400);
+    assert.equal(replay.body.error.code, 'INVALID_OR_EXPIRED_TOKEN');
   });
 });

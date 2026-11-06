@@ -53,6 +53,13 @@ const loginLimiter = rateLimit({
   key: (req) => `${req.ip}:${req.body.email}`,
 });
 
+const forgotPasswordLimiter = rateLimit({
+  name: 'forgot_password',
+  limit: 5,
+  windowSec: 15 * 60,
+  key: (req) => `${req.ip}:${req.body?.email || ''}`,
+});
+
 // 300 API requests per minute per user (or per IP before login). The user is read from the
 // access token without a database call; a bad token simply counts against the IP.
 const apiLimiter = rateLimit({
@@ -70,4 +77,4 @@ const apiLimiter = rateLimit({
   },
 });
 
-module.exports = { rateLimit, loginLimiter, apiLimiter };
+module.exports = { rateLimit, loginLimiter, forgotPasswordLimiter, apiLimiter };

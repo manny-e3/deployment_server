@@ -2,6 +2,8 @@ const { hashPassword, verifyPassword } = require('../utils/password');
 const prisma = require('../models/prisma');
 const userModel = require('../models/user.model');
 const refreshTokenModel = require('../models/refreshToken.model');
+const passwordResetTokenModel = require('../models/passwordResetToken.model');
+const emailService = require('./email.service');
 const audit = require('./audit.service');
 const authCache = require('../utils/authCache');
 const { env } = require('../utils/env');
@@ -133,4 +135,130 @@ async function changePassword({ userId, currentPassword, newPassword, ip }) {
   return tokens;
 }
 
-module.exports = { hashPassword, endAllSessions, login, refresh, logout, changePassword };
+/** Initiates a forgot password flow, generating a single-use token and emailing the user. */
+async function forgotPassword({ email, ip }) {
+  const genericMessage = 'If an account exists with that email address, we have sent a password reset link.';
+  const user = await userModel.findByEmailWithHash(email);
+
+  if (!user || !user.isActive) {
+    await audit.record({
+      userId: user?.id,
+      action: 'auth.forgot_password_unknown',
+      entity: 'user',
+      entityId: user?.id,
+      details: { email },
+      ip,
+    });
+    return { message: genericMessage };
+  }
+
+  // Invalidate any existing unused reset tokens for this user
+  await passwordResetTokenModel.invalidateAllForUser(user.id);
+
+  // Generate a cryptographically secure 32-byte URL-safe token
+  const resetToken = randomToken();
+  const tokenHash = hashToken(resetToken);
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+  await passwordResetTokenModel.create({
+    userId: user.id,
+    tokenHash,
+    expiresAt,
+  });
+
+  const appUrl = (env.APP_URL || 'http://localhost:5173').replace(/\/+$/, '');
+  const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+
+  try {
+    await emailService.sendPasswordResetEmail({
+      to: user.email,
+      userName: user.name,
+      resetUrl,
+      expiresInMinutes: 60,
+    });
+  } catch (err) {
+    throw new BadRequest('EMAIL_SEND_FAILED', 'Failed to send password reset email. Please try again later.');
+  }
+
+  await audit.record({
+    userId: user.id,
+    action: 'auth.forgot_password_requested',
+    entity: 'user',
+    entityId: user.id,
+    details: { email: user.email },
+    ip,
+  });
+
+  return { message: genericMessage };
+}
+
+/** Verifies whether a reset token is valid and unexpired without using it. */
+async function verifyResetToken({ token }) {
+  if (!token) {
+    throw new BadRequest('INVALID_TOKEN', 'Reset token is required.');
+  }
+
+  const tokenHash = hashToken(token);
+  const record = await passwordResetTokenModel.findByHash(tokenHash);
+
+  if (!record || record.usedAt || record.expiresAt <= new Date() || !record.user?.isActive) {
+    throw new BadRequest('INVALID_OR_EXPIRED_TOKEN', 'This password reset link is invalid or has expired.');
+  }
+
+  return { valid: true, email: record.user.email };
+}
+
+/** Resets the user's password using a valid reset token. Revokes all active sessions. */
+async function resetPassword({ token, newPassword, ip }) {
+  if (!token) {
+    throw new BadRequest('INVALID_TOKEN', 'Reset token is required.');
+  }
+
+  const tokenHash = hashToken(token);
+  const record = await passwordResetTokenModel.findByHash(tokenHash);
+
+  if (!record || record.usedAt || record.expiresAt <= new Date() || !record.user?.isActive) {
+    throw new BadRequest('INVALID_OR_EXPIRED_TOKEN', 'This password reset link is invalid or has expired.');
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+
+  await prisma.$transaction(async (tx) => {
+    // Mark token as used
+    await passwordResetTokenModel.markUsed(record.id, tx);
+    // Invalidate any other reset tokens for this user
+    await passwordResetTokenModel.invalidateAllForUser(record.userId, tx);
+    // Invalidate all active sessions across all devices
+    await refreshTokenModel.revokeAllForUser(record.userId, tx);
+    // Update user's password and increment tokenVersion (invalidates all access tokens)
+    await userModel.update(
+      record.userId,
+      { passwordHash, tokenVersion: { increment: 1 } },
+      tx,
+    );
+  });
+
+  await authCache.invalidate(record.userId);
+
+  await audit.record({
+    userId: record.userId,
+    action: 'auth.password_reset',
+    entity: 'user',
+    entityId: record.userId,
+    ip,
+  });
+
+  return { message: 'Your password has been reset successfully. You can now log in.' };
+}
+
+module.exports = {
+  hashPassword,
+  endAllSessions,
+  login,
+  refresh,
+  logout,
+  changePassword,
+  forgotPassword,
+  verifyResetToken,
+  resetPassword,
+};

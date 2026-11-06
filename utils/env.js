@@ -43,6 +43,17 @@ const envSchema = z.object({
   SSH_READY_TIMEOUT_MS: positiveInt.default(20000),
   SENTRY_DSN: z.url().optional(),
 
+  // Email / SMTP
+  SMTP_HOST: z.string().default('smtp.gmail.com'),
+  SMTP_PORT: positiveInt.default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  SMTP_SECURE: z
+    .union([z.boolean(), z.enum(['true', 'false'])])
+    .optional()
+    .transform((v) => v === true || v === 'true'),
+  MAIL_FROM: z.string().default('PortallOps <denverimousines@gmail.com>'),
+
   // Worker
   WORKER_CONCURRENCY: positiveInt.default(5),
   DEPLOY_TIMEOUT_MIN: positiveInt.default(30),
