@@ -21,6 +21,8 @@ const envSchema = z.object({
   // API
   PORT: positiveInt.default(4000),
   APP_URL: z.url(),
+  FRONTEND_URL: z.url().optional(),
+  SOCKET_PATH: z.string().optional(),
   JWT_SECRET: hex64,
   ACCESS_TOKEN_TTL: duration.default('15m'),
   REFRESH_TOKEN_TTL: duration.default('7d'),

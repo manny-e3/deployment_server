@@ -166,7 +166,7 @@ async function forgotPassword({ email, ip }) {
     expiresAt,
   });
 
-  const appUrl = (env.APP_URL || 'http://localhost:5173').replace(/\/+$/, '');
+  const appUrl = (env.FRONTEND_URL || env.APP_URL || 'http://localhost:5173').replace(/\/+$/, '');
   const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
 
   try {

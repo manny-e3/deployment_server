@@ -24,6 +24,11 @@ function readCookie(header = '', name) {
 function createSocketServer(httpServer) {
     const allowedOrigins = [
     env.APP_URL,
+    env.FRONTEND_URL,
+    'https://portalops.online',
+    'https://www.portalops.online',
+    'http://portalops.online',
+    'http://www.portalops.online',
     'https://deploy.travaiq.com',
     'http://localhost:5173',
     'http://localhost:3000',
