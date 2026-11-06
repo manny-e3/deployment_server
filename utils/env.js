@@ -38,7 +38,7 @@ const envSchema = z.object({
 
   // API and worker
   DATABASE_URL: z.string().regex(/^mysql:\/\//, 'must be a mysql:// URL'),
-  REDIS_URL: z.string().regex(/^rediss?:\/\//, 'must be a redis:// or rediss:// URL'),
+  REDIS_URL: z.string().regex(/^rediss?:\/\/|^\//, 'must be a redis:// URL or unix socket path'),
   ENCRYPTION_KEY: hex64,
   SSH_READY_TIMEOUT_MS: positiveInt.default(20000),
   SENTRY_DSN: z.url().optional(),

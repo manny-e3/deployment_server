@@ -9,9 +9,13 @@ try {
 
 let nobleArgon2 = null;
 try {
-  nobleArgon2 = require('@noble/hashes/argon2');
+  nobleArgon2 = require('@noble/hashes/argon2.js');
 } catch (err) {
-  // Noble hashes fallback
+  try {
+    nobleArgon2 = require('@noble/hashes/argon2');
+  } catch (err2) {
+    // Noble hashes fallback
+  }
 }
 
 function parsePhc(hashString) {
