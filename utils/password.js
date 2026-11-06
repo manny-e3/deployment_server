@@ -68,7 +68,7 @@ async function hashPassword(password) {
   if (nativeArgon2) {
     try {
       return await nativeArgon2.hash(password, { type: nativeArgon2.argon2id });
-    } catch (_) {}
+    } catch (_) { }
   }
   return hashPureJs(password);
 }
@@ -77,7 +77,7 @@ async function verifyPassword(hashString, password) {
   if (nativeArgon2) {
     try {
       return await nativeArgon2.verify(hashString, password);
-    } catch (_) {}
+    } catch (_) { }
   }
   return verifyPureJs(hashString, password);
 }
@@ -86,3 +86,4 @@ module.exports = {
   hashPassword,
   verifyPassword,
 };
+
