@@ -95,9 +95,23 @@ function buildScript({ repoUrl, branch, path, sha, envVars = {}, preDeploy = '',
   ];
 
   // Written base64-encoded so the values never appear in the script or the log.
-  const keys = Object.keys(envVars).sort();
+  // Auto-bridge common backend URL variable names for Vite, React, Vue, and Next.js
+  const effectiveEnvVars = { ...envVars };
+  const detectedBackendUrl = effectiveEnvVars.BACKEND_URL || effectiveEnvVars.API_URL || effectiveEnvVars.SERVER_URL;
+  if (detectedBackendUrl) {
+    if (!effectiveEnvVars.VITE_API_URL) effectiveEnvVars.VITE_API_URL = detectedBackendUrl;
+    if (!effectiveEnvVars.VITE_BACKEND_URL) effectiveEnvVars.VITE_BACKEND_URL = detectedBackendUrl;
+    if (!effectiveEnvVars.REACT_APP_API_URL) effectiveEnvVars.REACT_APP_API_URL = detectedBackendUrl;
+    if (!effectiveEnvVars.NEXT_PUBLIC_API_URL) effectiveEnvVars.NEXT_PUBLIC_API_URL = detectedBackendUrl;
+  }
+  const detectedViteUrl = effectiveEnvVars.VITE_API_URL || effectiveEnvVars.VITE_BACKEND_URL;
+  if (detectedViteUrl && !effectiveEnvVars.BACKEND_URL) {
+    effectiveEnvVars.BACKEND_URL = detectedViteUrl;
+  }
+
+  const keys = Object.keys(effectiveEnvVars).sort();
   if (keys.length) {
-    const content = `${keys.map((k) => envLine(k, envVars[k])).join('\n')}\n`;
+    const content = `${keys.map((k) => envLine(k, effectiveEnvVars[k])).join('\n')}\n`;
     lines.push(
       '',
       'echo "__STEP__ Writing .env"',
