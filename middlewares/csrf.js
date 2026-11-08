@@ -6,10 +6,18 @@ const { env } = require('../utils/env');
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 // Auth bootstrap & password recovery do not check existing CSRF token
 const EXEMPT_PATHS = new Set([
+  '/auth/register',
+  '/auth/confirm-email',
+  '/auth/resend-confirmation',
+  '/auth/accept-invite',
   '/auth/login',
   '/auth/refresh',
   '/auth/forgot-password',
   '/auth/reset-password',
+  '/api/v1/auth/register',
+  '/api/v1/auth/confirm-email',
+  '/api/v1/auth/resend-confirmation',
+  '/api/v1/auth/accept-invite',
   '/api/v1/auth/login',
   '/api/v1/auth/refresh',
   '/api/v1/auth/forgot-password',
@@ -41,14 +49,22 @@ function csrf(req, _res, next) {
     EXEMPT_PATHS.has(normPath) ||
     EXEMPT_PATHS.has(origPath) ||
     EXEMPT_PATHS.has(strippedOrigPath) ||
+    normPath.endsWith('/auth/register') ||
+    normPath.endsWith('/auth/confirm-email') ||
+    normPath.endsWith('/auth/resend-confirmation') ||
     normPath.endsWith('/auth/login') ||
     normPath.endsWith('/auth/refresh') ||
     normPath.endsWith('/auth/forgot-password') ||
     normPath.endsWith('/auth/reset-password') ||
+    normPath.endsWith('/auth/accept-invite') ||
+    origPath.endsWith('/auth/register') ||
+    origPath.endsWith('/auth/confirm-email') ||
+    origPath.endsWith('/auth/resend-confirmation') ||
     origPath.endsWith('/auth/login') ||
     origPath.endsWith('/auth/refresh') ||
     origPath.endsWith('/auth/forgot-password') ||
-    origPath.endsWith('/auth/reset-password')
+    origPath.endsWith('/auth/reset-password') ||
+    origPath.endsWith('/auth/accept-invite')
   ) {
     return next();
   }

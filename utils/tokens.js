@@ -11,7 +11,7 @@ function durationToMs(value) {
 
 // Access token: a short-lived JWT holding the user id, role and tokenVersion.
 function signAccessToken(user) {
-  return jwt.sign({ role: user.role, tv: user.tokenVersion }, env.JWT_SECRET, {
+  return jwt.sign({ role: user.role, tv: user.tokenVersion ?? 0 }, env.JWT_SECRET, {
     subject: user.id,
     expiresIn: env.ACCESS_TOKEN_TTL,
     algorithm: 'HS256',

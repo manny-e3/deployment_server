@@ -19,28 +19,45 @@ async function withLastDeploys(projects) {
 }
 
 /** One page of projects, each with its targets and their last deploy. */
-async function list(query) {
+async function list(query, actor) {
+  if (actor?.organizationId) {
+    const page = await projectModel.list({
+      ...query,
+      organizationId: actor.organizationId,
+    });
+    return { items: await withLastDeploys(page.items), nextCursor: page.nextCursor };
+  }
   const page = await projectModel.list(query);
   return { items: await withLastDeploys(page.items), nextCursor: page.nextCursor };
 }
 
-async function get(id) {
+async function get(id, actor) {
   const project = await projectModel.findByIdWithTargets(id);
   if (!project) throw new NotFound('Project');
+  if (actor?.organizationId && project.organizationId && project.organizationId !== actor.organizationId) {
+    throw new NotFound('Project');
+  }
   const [withDeploys] = await withLastDeploys([project]);
   return withDeploys;
 }
 
-async function getPlain(id) {
+async function getPlain(id, actor) {
   const project = await projectModel.findById(id);
   if (!project) throw new NotFound('Project');
+  if (actor?.organizationId && project.organizationId && project.organizationId !== actor.organizationId) {
+    throw new NotFound('Project');
+  }
   return project;
 }
 
 /** Creates a project. The webhook secret is in this response only; it is stored encrypted. */
 async function create(body, actor, ip) {
   const webhookSecret = newWebhookSecret();
-  const project = await projectModel.create({ ...body, webhookSecretEnc: encrypt(webhookSecret) });
+  const project = await projectModel.create({
+    ...body,
+    ...(actor?.organizationId && { organizationId: actor.organizationId }),
+    webhookSecretEnc: encrypt(webhookSecret),
+  });
   await audit.record({
     userId: actor.id,
     action: 'project.created',
@@ -53,7 +70,7 @@ async function create(body, actor, ip) {
 }
 
 async function update(id, body, actor, ip) {
-  const before = await getPlain(id);
+  const before = await getPlain(id, actor);
   const diff = diffFields(before, body);
   if (Object.keys(diff).length === 0) return before;
 
@@ -71,7 +88,7 @@ async function update(id, body, actor, ip) {
 
 /** Deletes the project with its targets, env vars and deploy history. Refused mid-deploy. */
 async function remove(id, actor, ip) {
-  const project = await getPlain(id);
+  const project = await getPlain(id, actor);
   if ((await projectModel.countBusyTargets(id)) > 0) {
     throw new Conflict('DEPLOY_RUNNING', `${project.name} has a deploy queued or running`);
   }
@@ -88,7 +105,7 @@ async function remove(id, actor, ip) {
 
 /** Replaces the webhook secret and returns the new one, once. The old one stops working. */
 async function regenerateWebhookSecret(id, actor, ip) {
-  await getPlain(id);
+  await getPlain(id, actor);
   const webhookSecret = newWebhookSecret();
   await projectModel.update(id, { webhookSecretEnc: encrypt(webhookSecret) });
   await audit.record({

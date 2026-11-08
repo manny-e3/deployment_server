@@ -10,6 +10,7 @@ const { env } = require('./env');
 const { logger } = require('./logger');
 const { can } = require('./permissions');
 const { createRedisConnection } = require('./redis');
+const prisma = require('../models/prisma');
 
 const ID = /^c[a-z0-9]{8,}$/i;
 
@@ -63,25 +64,46 @@ function createSocketServer(httpServer) {
 
   io.on('connection', (socket) => {
     const allowed = can(socket.data.user.role, 'deployments:view');
-    const room = (kind) => (payload, ack) => {
-      const id = payload?.id;
-      if (!allowed || typeof id !== 'string' || !ID.test(id)) return ack?.({ ok: false });
-      return { name: `${kind}:${id}`, ack };
-    };
 
     for (const kind of ['deployment', 'project']) {
-      socket.on(`${kind}:join`, (payload, ack) => {
-        const r = room(kind)(payload, ack);
-        if (r?.name) {
-          socket.join(r.name);
-          r.ack?.({ ok: true });
+      socket.on(`${kind}:join`, async (payload, ack) => {
+        const id = payload?.id;
+        if (!allowed || typeof id !== 'string' || !ID.test(id)) return ack?.({ ok: false });
+
+        const userOrg = socket.data.user?.organizationId;
+        if (!userOrg) return ack?.({ ok: false });
+
+        // Verify tenant ownership before subscribing socket to room
+        try {
+          if (kind === 'project') {
+            const exists = await prisma.project.findFirst({
+              where: { id, organizationId: userOrg },
+              select: { id: true },
+            });
+            if (!exists) return ack?.({ ok: false, error: 'NOT_FOUND' });
+          } else if (kind === 'deployment') {
+            const exists = await prisma.deployment.findFirst({
+              where: { id, target: { project: { organizationId: userOrg } } },
+              select: { id: true },
+            });
+            if (!exists) return ack?.({ ok: false, error: 'NOT_FOUND' });
+          }
+        } catch (err) {
+          logger.warn({ err, kind, id }, 'Socket room tenant check error');
+          return ack?.({ ok: false });
         }
+
+        socket.join(`${kind}:${id}`);
+        ack?.({ ok: true });
       });
+
       socket.on(`${kind}:leave`, (payload, ack) => {
-        const r = room(kind)(payload, ack);
-        if (r?.name) {
-          socket.leave(r.name);
-          r.ack?.({ ok: true });
+        const id = payload?.id;
+        if (typeof id === 'string' && ID.test(id)) {
+          socket.leave(`${kind}:${id}`);
+          ack?.({ ok: true });
+        } else {
+          ack?.({ ok: false });
         }
       });
     }

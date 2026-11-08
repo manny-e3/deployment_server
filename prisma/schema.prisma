@@ -42,20 +42,46 @@ enum LogStream {
   SYSTEM
 }
 
+model Organization {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String?   @unique
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  users     User[]
+  projects  Project[]
+  servers   Server[]
+}
+
 model User {
-  id            String         @id @default(cuid())
-  name          String
-  email         String         @unique
-  passwordHash  String
-  role          Role           @default(VIEWER)
-  isActive      Boolean        @default(true)
-  tokenVersion  Int            @default(0) // bump to log a user out everywhere
-  lastLoginAt   DateTime?
-  createdAt     DateTime       @default(now())
-  deployments   Deployment[]
+  id              String         @id @default(cuid())
+  name            String
+  email           String         @unique
+  passwordHash    String
+  role            Role           @default(VIEWER)
+  isSuperAdmin    Boolean        @default(false)
+  roleTitle       String?
+  isActive        Boolean        @default(true)
+  isEmailVerified Boolean        @default(true)
+  notifyDeployFailures Boolean   @default(true)
+  notifyDeploySuccess  Boolean   @default(true)
+  notifyTeamChanges    Boolean   @default(true)
+  tokenVersion    Int            @default(0) // bump to log a user out everywhere
+  organizationId  String?
+  organization    Organization?  @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  inviteToken     String?        @unique
+  invitedAt       DateTime?
+  inviteAcceptedAt DateTime?
+  lastLoginAt     DateTime?
+  createdAt       DateTime       @default(now())
+  deployments     Deployment[]
   auditLogs           AuditLog[]
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
+  emailConfirmationTokens EmailConfirmationToken[]
+
+  @@index([organizationId])
 }
 
 model RefreshToken {
@@ -82,25 +108,46 @@ model PasswordResetToken {
   @@index([userId])
 }
 
+model EmailConfirmationToken {
+  id          String    @id @default(cuid())
+  userId      String
+  tokenHash   String    @unique @db.Char(64)
+  expiresAt   DateTime
+  confirmedAt DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
 model Server {
-  id              String    @id @default(cuid())
-  name            String    @unique
+  id              String        @id @default(cuid())
+  organizationId  String?
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name            String        @unique
   host            String
-  port            Int       @default(22)
+  port            Int           @default(22)
   username        String
   authType        AuthType
-  secretEnc       String    @db.Text // encrypted private key can be several KB
-  passphraseEnc   String?   @db.Text
+  secretEnc       String        @db.Text // encrypted private key can be several KB
+  passphraseEnc   String?       @db.Text
   hostFingerprint String?
+  publicKey       String?       @db.Text
+  setupToken      String?       @unique
+  setupCompletedAt DateTime?
   lastCheckAt     DateTime?
   lastCheckOk     Boolean?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
   targets         Target[]
+
+  @@index([organizationId])
 }
 
 model Project {
   id               String            @id @default(cuid())
+  organizationId   String?
+  organization     Organization?     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name             String            @unique
   repoUrl          String            @db.VarChar(500)
   defaultBranch    String            @default("main")
@@ -110,6 +157,8 @@ model Project {
   updatedAt        DateTime          @updatedAt
   targets          Target[]
   webhookDeliveries WebhookDelivery[]
+
+  @@index([organizationId])
 }
 
 model Target {

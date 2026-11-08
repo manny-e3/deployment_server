@@ -60,6 +60,13 @@ const forgotPasswordLimiter = rateLimit({
   key: (req) => `${req.ip}:${req.body?.email || ''}`,
 });
 
+const registerLimiter = rateLimit({
+  name: 'register',
+  limit: 10,
+  windowSec: 15 * 60,
+  key: (req) => `${req.ip}`,
+});
+
 // 300 API requests per minute per user (or per IP before login). The user is read from the
 // access token without a database call; a bad token simply counts against the IP.
 const apiLimiter = rateLimit({
@@ -77,4 +84,12 @@ const apiLimiter = rateLimit({
   },
 });
 
-module.exports = { rateLimit, loginLimiter, forgotPasswordLimiter, apiLimiter };
+// 30 deploy dispatch requests per minute per user or organization to prevent queue flooding
+const deployLimiter = rateLimit({
+  name: 'deploy',
+  limit: 30,
+  windowSec: 60,
+  key: (req) => req.user?.organizationId ? `org:${req.user.organizationId}` : (req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`),
+});
+
+module.exports = { rateLimit, loginLimiter, registerLimiter, forgotPasswordLimiter, apiLimiter, deployLimiter };

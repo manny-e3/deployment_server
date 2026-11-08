@@ -3,6 +3,7 @@ const prisma = require('./prisma');
 // Fields the API may return. webhookSecretEnc is never selected here.
 const publicFields = {
   id: true,
+  organizationId: true,
   name: true,
   repoUrl: true,
   defaultBranch: true,
@@ -47,8 +48,10 @@ const findByIdWithTargets = (id, db = prisma) =>
   });
 
 /** Sorted by name, cursor-paginated, each with its targets: returns { items, nextCursor }. */
-async function list({ limit, cursor }, db = prisma) {
+async function list({ limit = 50, cursor, organizationId } = {}, db = prisma) {
+  const where = organizationId ? { organizationId } : {};
   const rows = await db.project.findMany({
+    where,
     select: { ...publicFields, targets: { select: targetSummary, orderBy: { name: 'asc' } } },
     orderBy: { name: 'asc' },
     take: limit + 1,

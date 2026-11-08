@@ -29,7 +29,20 @@ async function resolveSession(token) {
   if (!state || !state.isActive || state.tokenVersion !== payload.tv) {
     throw new Unauthorized('Your session has ended, please log in again');
   }
-  return { id: state.id, name: state.name, email: state.email, role: state.role };
+
+  // If organization is suspended, block access for non-super-admins
+  if (state.organization && state.organization.isActive === false && !state.isSuperAdmin) {
+    throw new Unauthorized('Your workspace is currently suspended. Please contact platform administration.', 'WORKSPACE_SUSPENDED');
+  }
+
+  return {
+    id: state.id,
+    name: state.name,
+    email: state.email,
+    role: state.role,
+    isSuperAdmin: Boolean(state.isSuperAdmin),
+    organizationId: state.organizationId ?? null,
+  };
 }
 
 /** Reads the access-token (Bearer token header or cookie) and sets req.user. */

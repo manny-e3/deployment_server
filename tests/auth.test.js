@@ -252,3 +252,122 @@ describe('Password Reset Flow', () => {
     assert.equal(replay.body.error.code, 'INVALID_OR_EXPIRED_TOKEN');
   });
 });
+
+describe('POST /auth/register', () => {
+  beforeEach(resetDb);
+
+  it('registers a new user, sets session cookies, hashes password and returns 201', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/register')
+      .send({
+        name: 'Jane Operator',
+        email: 'jane@example.com',
+        password: 'SecurePassword123!',
+        organizationName: 'Acme Cloud',
+      })
+      .expect(201);
+
+    assert.equal(res.body.name, 'Jane Operator');
+    assert.equal(res.body.email, 'jane@example.com');
+    assert.equal(res.body.role, 'ADMIN');
+    assert.equal(res.body.organizationName, 'Acme Cloud');
+    assert.equal(res.body.passwordHash, undefined);
+    assert.ok(res.body.accessToken);
+    assert.ok(res.body.refreshToken);
+
+    const cookies = res.headers['set-cookie'].join('\n');
+    assert.match(cookies, /access_token=[^;]+;.*HttpOnly/);
+    assert.match(cookies, /refresh_token=[^;]+;.*HttpOnly/);
+
+    const dbUser = await prisma.user.findUnique({ where: { email: 'jane@example.com' } });
+    assert.ok(dbUser);
+    assert.equal(dbUser.name, 'Jane Operator');
+    assert.equal(dbUser.isEmailVerified, false);
+
+    // Confirmation token was generated in database
+    const confToken = await prisma.emailConfirmationToken.findFirst({ where: { userId: dbUser.id } });
+    assert.ok(confToken);
+    assert.equal(confToken.confirmedAt, null);
+
+    // Audit log
+    const auditEntry = await prisma.auditLog.findFirst({ where: { action: 'auth.registered' } });
+    assert.ok(auditEntry);
+    assert.equal(auditEntry.userId, dbUser.id);
+  });
+
+  it('confirms email with a valid token, updates user status and rejects replay', async () => {
+    const { hashToken } = require('../utils/tokens');
+    const user = await createUser('VIEWER');
+    await prisma.user.update({ where: { id: user.id }, data: { isEmailVerified: false } });
+
+    const rawToken = 'confirm-token-xyz-123';
+    await prisma.emailConfirmationToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashToken(rawToken),
+        expiresAt: new Date(Date.now() + 24 * 3600 * 1000),
+      },
+    });
+
+    const res = await request(app)
+      .post('/api/v1/auth/confirm-email')
+      .send({ token: rawToken })
+      .expect(200);
+
+    assert.equal(res.body.isEmailVerified, true);
+    assert.match(res.body.message, /confirmed successfully/i);
+
+    const updatedUser = await prisma.user.findUnique({ where: { id: user.id } });
+    assert.equal(updatedUser.isEmailVerified, true);
+
+    // Replay is rejected
+    const replay = await request(app)
+      .post('/api/v1/auth/confirm-email')
+      .send({ token: rawToken })
+      .expect(400);
+    assert.equal(replay.body.error.code, 'INVALID_OR_EXPIRED_TOKEN');
+  });
+
+  it('resends confirmation email for unverified user', async () => {
+    const user = await createUser('VIEWER');
+    await prisma.user.update({ where: { id: user.id }, data: { isEmailVerified: false } });
+
+    const res = await request(app)
+      .post('/api/v1/auth/resend-confirmation')
+      .send({ email: user.email })
+      .expect(200);
+
+    assert.match(res.body.message, /confirmation email/i);
+    const tokenRecord = await prisma.emailConfirmationToken.findFirst({
+      where: { userId: user.id, confirmedAt: null },
+    });
+    assert.ok(tokenRecord);
+  });
+
+  it('refuses duplicate email with 409', async () => {
+    const user = await createUser('VIEWER');
+    const res = await request(app)
+      .post('/api/v1/auth/register')
+      .send({
+        name: 'Another User',
+        email: user.email,
+        password: 'Password123!',
+      })
+      .expect(409);
+
+    assert.equal(res.body.error.code, 'EMAIL_EXISTS');
+  });
+
+  it('refuses passwords shorter than 6 characters', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/register')
+      .send({
+        name: 'Short Pwd',
+        email: 'short@example.com',
+        password: '12345',
+      })
+      .expect(400);
+
+    assert.equal(res.body.error.code, 'VALIDATION_FAILED');
+  });
+});

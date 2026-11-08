@@ -10,15 +10,20 @@ const { decrypt, encrypt } = require('../utils/crypto');
 const { diffFields } = require('../utils/diff');
 const { BusinessRuleError, Conflict, NotFound } = require('../utils/errors');
 
-async function getInProject(projectId, targetId) {
+async function getInProject(projectId, targetId, actor) {
+  if (actor) await projectService.getPlain(projectId, actor);
   const target = await targetModel.findInProject(projectId, targetId);
   if (!target) throw new NotFound('Target');
   return target;
 }
 
-async function assertServerExists(serverId) {
-  if (!(await serverModel.findById(serverId))) {
+async function assertServerExists(serverId, actor) {
+  const server = await serverModel.findById(serverId);
+  if (!server) {
     throw new BusinessRuleError('UNKNOWN_SERVER', 'No server with this serverId');
+  }
+  if (actor?.organizationId && server.organizationId && server.organizationId !== actor.organizationId) {
+    throw new BusinessRuleError('UNKNOWN_SERVER', 'Server does not belong to your organization');
   }
 }
 
@@ -32,8 +37,8 @@ const assertNotBusy = (target) => {
 // handler turns that into 409 ALREADY_EXISTS.
 
 async function create(projectId, body, actor, ip) {
-  await projectService.getPlain(projectId);
-  await assertServerExists(body.serverId);
+  await projectService.getPlain(projectId, actor);
+  await assertServerExists(body.serverId, actor);
 
   const target = await targetModel.create({ ...body, projectId });
   await audit.record({
@@ -57,9 +62,9 @@ async function create(projectId, body, actor, ip) {
 
 /** Commands changes are audited in full: they run on the server at every deploy. */
 async function update(projectId, targetId, body, actor, ip) {
-  const before = await getInProject(projectId, targetId);
+  const before = await getInProject(projectId, targetId, actor);
   if (body.serverId || body.path) assertNotBusy(before);
-  if (body.serverId && body.serverId !== before.serverId) await assertServerExists(body.serverId);
+  if (body.serverId && body.serverId !== before.serverId) await assertServerExists(body.serverId, actor);
 
   const diff = diffFields(before, body);
   if (Object.keys(diff).length === 0) return before;
@@ -77,7 +82,7 @@ async function update(projectId, targetId, body, actor, ip) {
 }
 
 async function remove(projectId, targetId, actor, ip) {
-  const target = await getInProject(projectId, targetId);
+  const target = await getInProject(projectId, targetId, actor);
   assertNotBusy(target);
   await targetModel.remove(targetId);
   await audit.record({
@@ -90,15 +95,18 @@ async function remove(projectId, targetId, actor, ip) {
   });
 }
 
-async function getAnyTarget(targetId) {
+async function getAnyTarget(targetId, actor) {
   const target = await targetModel.findById(targetId);
   if (!target) throw new NotFound('Target');
+  if (actor?.organizationId) {
+    await projectService.getPlain(target.projectId, actor);
+  }
   return target;
 }
 
 /** Env var names only. Values never leave the server once saved. */
-async function getEnvKeys(targetId) {
-  await getAnyTarget(targetId);
+async function getEnvKeys(targetId, actor) {
+  await getAnyTarget(targetId, actor);
   const rows = await envVarModel.listKeys(targetId);
   return { keys: rows.map((r) => r.key) };
 }
@@ -108,7 +116,7 @@ async function getEnvKeys(targetId) {
  * names the keys added, removed and changed, never the values.
  */
 async function replaceEnv(targetId, vars, actor, ip) {
-  const target = await getAnyTarget(targetId);
+  const target = await getAnyTarget(targetId, actor);
   const existing = await envVarModel.listWithValues(targetId);
   const old = new Map(existing.map((r) => [r.key, decrypt(r.valueEnc)]));
 
@@ -136,8 +144,8 @@ async function replaceEnv(targetId, vars, actor, ip) {
 }
 
 /** Decrypts and returns full env vars (key => value) for admin configuration */
-async function getEnvFull(targetId) {
-  await getAnyTarget(targetId);
+async function getEnvFull(targetId, actor) {
+  await getAnyTarget(targetId, actor);
   const rows = await envVarModel.listWithValues(targetId);
   const vars = {};
   for (const r of rows) {
@@ -152,7 +160,7 @@ async function getEnvFull(targetId) {
 
 /** Imports a custom SQL file directly into the target server database over SSH */
 async function importSql(targetId, data, actor, ip) {
-  const target = await getAnyTarget(targetId);
+  const target = await getAnyTarget(targetId, actor);
   const server = await serverModel.findByIdWithSecrets(target.serverId);
   if (!server) throw new NotFound('Server');
 
@@ -254,7 +262,7 @@ async function importSql(targetId, data, actor, ip) {
 
 /** Executes an artisan command inside the target directory over SSH */
 async function runArtisan(targetId, command, actor, ip) {
-  const target = await getAnyTarget(targetId);
+  const target = await getAnyTarget(targetId, actor);
   const server = await serverModel.findByIdWithSecrets(target.serverId);
   if (!server) throw new NotFound('Server');
 

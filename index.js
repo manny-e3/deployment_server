@@ -12,6 +12,7 @@ const notFound = require('./middlewares/notFound');
 const errorHandler = require('./middlewares/errorHandler');
 const routes = require('./routes');
 const webhookRoutes = require('./routes/webhooks.routes');
+const setupRoutes = require('./routes/setup.routes');
 
 function createApp() {
   const app = express();
@@ -56,6 +57,11 @@ function createApp() {
   app.use('/api/v1/targets/:id/import-sql', express.json({ limit: '100mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+  // BYOS Zero-Friction 1-Line Setup Script routes (no CSRF or session cookies needed)
+  app.use('/setup', setupRoutes);
+  app.use('/api/v1/setup', setupRoutes);
+
   app.use('/api/v1', routes);
 
   // Root ping endpoint for load balancer & deployment health checks

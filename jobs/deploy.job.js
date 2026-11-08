@@ -11,6 +11,8 @@
 const deploymentModel = require('../models/deployment.model');
 const serverModel = require('../models/server.model');
 const targetModel = require('../models/target.model');
+const prisma = require('../models/prisma');
+const emailService = require('../services/email.service');
 const { buildScript, killTreeScript } = require('../utils/buildScript');
 const { decrypt } = require('../utils/crypto');
 const { env } = require('../utils/env');
@@ -219,6 +221,60 @@ async function runDeployment(deploymentId, options = {}) {
       { deploymentId, status: result.status, exitCode: result.exitCode, ms: finishedAt - deployment.queuedAt },
       'deploy finished',
     );
+
+    // Dispatch email notifications to subscribed workspace engineers
+    dispatchDeploymentNotifications(deployment, result, commit, finishedAt).catch((err) => {
+      logger.warn({ err: err.message, deploymentId }, 'Error running deployment notification dispatch');
+    });
+  }
+}
+
+/** Sends deployment outcome alert emails to active users who opted in. */
+async function dispatchDeploymentNotifications(deployment, result, commit, finishedAt) {
+  const isSuccess = result.status === 'SUCCESS';
+  const isFailed = result.status === 'FAILED';
+  if (!isSuccess && !isFailed) return;
+
+  const { project, server } = deployment.target || {};
+  const organizationId = project?.organizationId;
+
+  const where = {
+    ...(organizationId ? { organizationId } : {}),
+    isActive: true,
+    ...(isSuccess ? { notifyDeploySuccess: true } : { notifyDeployFailures: true }),
+  };
+
+  const subscribers = await prisma.user.findMany({
+    where,
+    select: { id: true, name: true, email: true },
+  });
+
+  if (!subscribers.length) return;
+
+  const durationSec = deployment.queuedAt
+    ? Math.max(1, Math.round((finishedAt.getTime() - new Date(deployment.queuedAt).getTime()) / 1000))
+    : null;
+
+  const appUrl = (env.FRONTEND_URL || env.APP_URL || 'http://localhost:5173').replace(/\/+$/, '');
+  const deployUrl = `${appUrl}/deployments`;
+
+  for (const sub of subscribers) {
+    emailService.sendDeploymentStatusEmail({
+      to: sub.email,
+      userName: sub.name,
+      projectName: project.name,
+      targetName: deployment.target.name,
+      serverHost: server?.host,
+      status: result.status,
+      branch: deployment.branch,
+      commitSha: commit.commitSha || deployment.requestedSha,
+      commitMessage: commit.commitMessage,
+      error: result.error,
+      durationSec,
+      deployUrl,
+    }).catch((err) => {
+      logger.warn({ err: err.message, to: sub.email }, 'Failed sending deploy alert email');
+    });
   }
 }
 

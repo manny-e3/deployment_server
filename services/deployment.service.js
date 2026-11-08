@@ -22,6 +22,9 @@ const statusOf = (d, projectId) => ({ ...d, projectId, targetId: d.targetId });
 async function start({ projectId, targetIds, branch, trigger = 'MANUAL', requestedSha = null, user, ip }) {
   const project = await projectModel.findByIdWithTargets(projectId);
   if (!project) throw new NotFound('Project');
+  if (user?.organizationId && project.organizationId && project.organizationId !== user.organizationId) {
+    throw new NotFound('Project');
+  }
 
   const chosen = targetIds
     ? project.targets.filter((t) => targetIds.includes(t.id))
@@ -33,6 +36,22 @@ async function start({ projectId, targetIds, branch, trigger = 'MANUAL', request
     });
   }
   if (chosen.length === 0) throw new BusinessRuleError('NO_TARGETS', 'This project has no targets yet');
+
+  if (project.organizationId) {
+    const activeOrQueued = await prisma.deployment.count({
+      where: {
+        target: { project: { organizationId: project.organizationId } },
+        status: { in: ['QUEUED', 'RUNNING'] },
+      },
+    });
+    const MAX_CONCURRENT_ORG_DEPLOYS = Number(env.MAX_CONCURRENT_ORG_DEPLOYS) || 8;
+    if (activeOrQueued >= MAX_CONCURRENT_ORG_DEPLOYS) {
+      throw new BusinessRuleError(
+        'ORG_QUEUE_LIMIT_EXCEEDED',
+        `Workspace has reached the limit of ${MAX_CONCURRENT_ORG_DEPLOYS} active/queued deployments. Please wait for current runs to complete.`,
+      );
+    }
+  }
 
   const started = [];
   const skipped = [];
@@ -100,17 +119,28 @@ async function start({ projectId, targetIds, branch, trigger = 'MANUAL', request
   return { started, skipped };
 }
 
-const list = (query) => deploymentModel.list(query);
+const list = (query, actor) => {
+  if (actor?.organizationId) {
+    return deploymentModel.list({
+      ...query,
+      organizationId: actor.organizationId,
+    });
+  }
+  return deploymentModel.list(query);
+};
 
-async function get(id) {
+async function get(id, actor) {
   const deployment = await deploymentModel.findById(id);
   if (!deployment) throw new NotFound('Deployment');
+  if (actor?.organizationId && deployment.target?.project?.organizationId && deployment.target.project.organizationId !== actor.organizationId) {
+    throw new NotFound('Deployment');
+  }
   return deployment;
 }
 
 /** Log lines after afterSeq, for the first load and for filling a gap after a reconnect. */
-async function logs(id, { afterSeq, limit }) {
-  const deployment = await get(id);
+async function logs(id, { afterSeq, limit }, actor) {
+  const deployment = await get(id, actor);
   const rows = await deploymentLogModel.listAfter(id, afterSeq, limit);
   return {
     lines: rows.map((r) => ({ seq: r.seq, stream: r.stream, line: r.line, at: r.createdAt })),
@@ -124,7 +154,7 @@ async function logs(id, { afterSeq, limit }) {
  * every second; the answer is then { status: 'CANCELLING' }.
  */
 async function cancel(id, user, ip) {
-  const deployment = await get(id);
+  const deployment = await get(id, user);
   const projectId = deployment.target.project.id;
 
   if (deployment.status === 'QUEUED' && (await deploymentModel.cancelIfQueued(id))) {
@@ -136,7 +166,7 @@ async function cancel(id, user, ip) {
   }
 
   // Either RUNNING, or the worker took it between our read and our update.
-  const fresh = await get(id);
+  const fresh = await get(id, user);
   if (fresh.status === 'RUNNING' || fresh.status === 'QUEUED') {
     await redis.set(cancelKey(id), user.id, 'EX', 3600);
     await audit.record({
@@ -153,7 +183,7 @@ async function cancel(id, user, ip) {
 
 /** Deploys the exact commit of an earlier successful deploy again, as a new deployment. */
 async function rollback(id, user, ip) {
-  const from = await get(id);
+  const from = await get(id, user);
   if (from.status !== 'SUCCESS' || !from.commitSha) {
     throw new BusinessRuleError('NOT_ROLLBACKABLE', 'Only a successful deploy with a known commit can be rolled back to');
   }

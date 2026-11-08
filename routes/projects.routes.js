@@ -4,6 +4,7 @@ const deployments = require('../controllers/deployments.controller');
 const authenticate = require('../middlewares/authenticate');
 const authorize = require('../middlewares/authorize');
 const validate = require('../middlewares/validate');
+const { deployLimiter } = require('../middlewares/rateLimit');
 const {
   createProjectBody,
   createTargetBody,
@@ -32,6 +33,7 @@ router.post('/:id/webhook-secret', manage, byId, projects.regenerateWebhookSecre
 router.post(
   '/:id/deploy',
   authorize('deploy:create'),
+  deployLimiter,
   validate({ params: idParams, body: deployBody }),
   deployments.start,
 );

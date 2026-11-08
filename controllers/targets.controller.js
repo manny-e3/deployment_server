@@ -1,11 +1,11 @@
 const targetService = require('../services/target.service');
 
 exports.getEnv = async (req, res) => {
-  res.json(await targetService.getEnvKeys(req.params.id));
+  res.json(await targetService.getEnvKeys(req.params.id, req.user));
 };
 
 exports.getEnvFull = async (req, res) => {
-  res.json(await targetService.getEnvFull(req.params.id));
+  res.json(await targetService.getEnvFull(req.params.id, req.user));
 };
 
 exports.putEnv = async (req, res) => {

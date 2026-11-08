@@ -2,11 +2,11 @@ const projectService = require('../services/project.service');
 const targetService = require('../services/target.service');
 
 exports.list = async (req, res) => {
-  res.json(await projectService.list(req.query));
+  res.json(await projectService.list(req.query, req.user));
 };
 
 exports.get = async (req, res) => {
-  res.json(await projectService.get(req.params.id));
+  res.json(await projectService.get(req.params.id, req.user));
 };
 
 // The response includes webhookSecret, shown only this once.

@@ -1,11 +1,11 @@
 const serverService = require('../services/server.service');
 
 exports.list = async (req, res) => {
-  res.json(await serverService.list(req.query));
+  res.json(await serverService.list(req.query, req.user));
 };
 
 exports.get = async (req, res) => {
-  res.json(await serverService.get(req.params.id));
+  res.json(await serverService.get(req.params.id, req.user));
 };
 
 exports.create = async (req, res) => {

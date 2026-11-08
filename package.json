@@ -16,6 +16,8 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
+    "db:backup": "node scripts/backup.js",
+    "db:restore": "node scripts/restore.js",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
     "db:seed:scale": "node prisma/seed-scale.js",

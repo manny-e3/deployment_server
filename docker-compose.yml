@@ -73,13 +73,14 @@ services:
     environment:
       DATABASE_URL: mysql://portal:portal@mysql:3306/portal
       REDIS_URL: redis://redis:6379
-    command: ['sh', '-c', 'npx prisma migrate deploy && node index.js']
+    command: ['sh', '-c', 'npx prisma migrate deploy && npx prisma generate && node index.js']
     ports:
       - '${PORT:-4000}:${PORT:-4000}'
     extra_hosts:
       - "101-PHP-01.fmdqgroup.com:10.10.15.59"
       - "101-PHP-01:10.10.15.59"
     volumes:
+      - ./prisma:/app/prisma
       - ./logs:/app/logs
       - ./utils:/app/utils
       - ./services:/app/services
@@ -87,6 +88,9 @@ services:
       - ./models:/app/models
       - ./routes:/app/routes
       - ./controllers:/app/controllers
+      - ./middlewares:/app/middlewares
+      - ./scripts:/app/scripts
+      - ./backups:/app/backups
     depends_on:
       mysql:
         condition: service_healthy
@@ -112,11 +116,12 @@ services:
     environment:
       DATABASE_URL: mysql://portal:portal@mysql:3306/portal
       REDIS_URL: redis://redis:6379
-    command: ['node', 'worker.js']
+    command: ['sh', '-c', 'npx prisma generate && node worker.js']
     extra_hosts:
       - "101-PHP-01.fmdqgroup.com:10.10.15.59"
       - "101-PHP-01:10.10.15.59"
     volumes:
+      - ./prisma:/app/prisma
       - ./logs:/app/logs
       - ./utils:/app/utils
       - ./services:/app/services
@@ -124,6 +129,9 @@ services:
       - ./models:/app/models
       - ./routes:/app/routes
       - ./controllers:/app/controllers
+      - ./middlewares:/app/middlewares
+      - ./scripts:/app/scripts
+      - ./backups:/app/backups
     depends_on:
       api:
         condition: service_healthy

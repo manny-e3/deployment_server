@@ -54,10 +54,15 @@ const update = (id, data, db = prisma) =>
   db.deployment.update({ where: { id }, data, select: publicFields });
 
 /** Newest first, filtered and cursor-paginated: returns { items, nextCursor }. */
-async function list({ limit, cursor, projectId, targetId, status, trigger, from, to }, db = prisma) {
+async function list({ limit = 50, cursor, projectId, targetId, status, trigger, from, to, organizationId } = {}, db = prisma) {
   const where = {
-    ...(targetId && { targetId }),
-    ...(projectId && { target: { projectId } }),
+    target: {
+      project: {
+        ...(organizationId && { organizationId }),
+        ...(projectId && { id: projectId }),
+      },
+      ...(targetId && { id: targetId }),
+    },
     ...(status && { status }),
     ...(trigger && { trigger }),
     ...((from || to) && { queuedAt: { ...(from && { gte: from }), ...(to && { lte: to }) } }),

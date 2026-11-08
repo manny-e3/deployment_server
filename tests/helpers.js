@@ -15,6 +15,7 @@ async function resetDb() {
   await prisma.project.deleteMany();
   await prisma.server.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.organization.deleteMany();
   await redis.flushdb();
 }
 

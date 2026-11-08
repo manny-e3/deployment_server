@@ -1,26 +1,59 @@
+const crypto = require('node:crypto');
 const serverModel = require('../models/server.model');
 const audit = require('./audit.service');
-const { decrypt, encrypt } = require('../utils/crypto');
+const { decrypt, encrypt, generateSshKeyPair } = require('../utils/crypto');
+const { env } = require('../utils/env');
 const { BusinessRuleError, Conflict, NotFound, ValidationError } = require('../utils/errors');
 const ssh = require('../utils/ssh');
 
 // Fields that may appear in audit details. Secrets never do.
 const AUDITED_FIELDS = ['name', 'host', 'port', 'username', 'authType'];
 
-const list = (query) => serverModel.list(query);
+const list = (query, actor) => {
+  if (actor?.organizationId) {
+    return serverModel.list({
+      ...query,
+      organizationId: actor.organizationId,
+    });
+  }
+  return serverModel.list(query);
+};
 
-async function get(id) {
+async function get(id, actor) {
   const server = await serverModel.findById(id);
   if (!server) throw new NotFound('Server');
+  if (actor?.organizationId && server.organizationId && server.organizationId !== actor.organizationId) {
+    throw new NotFound('Server');
+  }
   return server;
 }
 
 async function create(body, actor, ip) {
-  const { secret, passphrase, ...fields } = body;
+  let { secret, passphrase, autoGenerateKey, ...fields } = body;
+
+  let publicKey = null;
+  let setupToken = null;
+
+  // If autoGenerateKey is explicitly requested, or if authType is KEY and no secret was provided:
+  const isAutoKey = autoGenerateKey === true || (fields.authType === 'KEY' && !secret);
+  if (isAutoKey) {
+    const keyPair = generateSshKeyPair('portalops-deployer');
+    secret = keyPair.privateKey;
+    publicKey = keyPair.publicKey;
+    setupToken = 'srv_' + crypto.randomBytes(12).toString('hex');
+    fields.authType = 'KEY';
+    if (!fields.username || fields.username === 'root') {
+      fields.username = 'portalops';
+    }
+  }
+
   const server = await serverModel.create({
     ...fields,
+    ...(actor?.organizationId && { organizationId: actor.organizationId }),
     secretEnc: encrypt(secret),
     passphraseEnc: passphrase ? encrypt(passphrase) : null,
+    publicKey,
+    setupToken,
   });
 
   await audit.record({
@@ -31,7 +64,16 @@ async function create(body, actor, ip) {
     details: Object.fromEntries(AUDITED_FIELDS.map((f) => [f, server[f]])),
     ip,
   });
-  return server;
+
+  const baseUrl = env.APP_URL || 'https://portalops.online';
+  return {
+    ...server,
+    ...(setupToken && {
+      setupToken,
+      setupScriptUrl: `${baseUrl}/setup/${setupToken}.sh`,
+      setupCommand: `curl -fsSL ${baseUrl}/setup/${setupToken}.sh | bash`,
+    }),
+  };
 }
 
 /**
@@ -39,7 +81,7 @@ async function create(body, actor, ip) {
  * Moving to a different host or port forgets the pinned host key, since it is another machine.
  */
 async function update(id, body, actor, ip) {
-  const before = await get(id);
+  const before = await get(id, actor);
   const { secret, passphrase, ...fields } = body;
   const keyAuth = (fields.authType ?? before.authType) === 'KEY';
   if (secret !== undefined && keyAuth && !/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(secret)) {
@@ -78,7 +120,7 @@ async function update(id, body, actor, ip) {
 }
 
 async function remove(id, actor, ip) {
-  const server = await get(id);
+  const server = await get(id, actor);
   const targetCount = await serverModel.countTargets(id);
   if (targetCount > 0) {
     throw new Conflict(
@@ -119,6 +161,9 @@ const parseLines = (stdout) =>
 async function testConnection(id, actor, ip) {
   const server = await serverModel.findByIdWithSecrets(id);
   if (!server) throw new NotFound('Server');
+  if (actor?.organizationId && server.organizationId && server.organizationId !== actor.organizationId) {
+    throw new NotFound('Server');
+  }
 
   let conn;
   let fingerprint;
@@ -186,7 +231,7 @@ async function testConnection(id, actor, ip) {
 
 /** Forgets the pinned host key; the next successful test pins the new one. */
 async function resetFingerprint(id, actor, ip) {
-  const before = await get(id);
+  const before = await get(id, actor);
   const server = await serverModel.update(id, { hostFingerprint: null });
   await audit.record({
     userId: actor.id,

@@ -32,4 +32,31 @@ function decrypt(stored, key = defaultKey) {
   }
 }
 
-module.exports = { encrypt, decrypt };
+/**
+ * Generates an Ed25519 keypair for zero-friction SSH onboarding.
+ * Returns:
+ *   - privateKey: PEM string (PKCS#8) to encrypt and store in secretEnc
+ *   - publicKey: OpenSSH format string `ssh-ed25519 AAAAC3... portalops-deployer`
+ */
+function generateSshKeyPair(comment = 'portalops-deployer') {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519', {
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  });
+  const der = publicKey.export({ type: 'spki', format: 'der' });
+  const rawPub = der.subarray(12);
+  const typeStr = Buffer.from('ssh-ed25519');
+  const wire = Buffer.concat([
+    Buffer.from([0, 0, 0, typeStr.length]),
+    typeStr,
+    Buffer.from([0, 0, 0, rawPub.length]),
+    rawPub,
+  ]);
+  const openSshPublicKey = `ssh-ed25519 ${wire.toString('base64')} ${comment}`;
+
+  return {
+    privateKey,
+    publicKey: openSshPublicKey,
+  };
+}
+
+module.exports = { encrypt, decrypt, generateSshKeyPair };

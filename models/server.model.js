@@ -3,12 +3,16 @@ const prisma = require('./prisma');
 // Fields the API may return. secretEnc and passphraseEnc are never selected here.
 const publicFields = {
   id: true,
+  organizationId: true,
   name: true,
   host: true,
   port: true,
   username: true,
   authType: true,
   hostFingerprint: true,
+  publicKey: true,
+  setupToken: true,
+  setupCompletedAt: true,
   lastCheckAt: true,
   lastCheckOk: true,
   createdAt: true,
@@ -21,8 +25,10 @@ const findById = (id, db = prisma) => db.server.findUnique({ where: { id }, sele
 const findByIdWithSecrets = (id, db = prisma) => db.server.findUnique({ where: { id } });
 
 /** Sorted by name, cursor-paginated: returns { items, nextCursor }. */
-async function list({ limit, cursor }, db = prisma) {
+async function list({ limit = 50, cursor, organizationId } = {}, db = prisma) {
+  const where = organizationId ? { organizationId } : {};
   const rows = await db.server.findMany({
+    where,
     select: publicFields,
     orderBy: { name: 'asc' },
     take: limit + 1,
@@ -42,10 +48,14 @@ const remove = (id, db = prisma) => db.server.delete({ where: { id }, select: { 
 
 const countTargets = (serverId, db = prisma) => db.target.count({ where: { serverId } });
 
+const findBySetupToken = (setupToken, db = prisma) =>
+  db.server.findUnique({ where: { setupToken } });
+
 module.exports = {
   publicFields,
   findById,
   findByIdWithSecrets,
+  findBySetupToken,
   list,
   create,
   update,

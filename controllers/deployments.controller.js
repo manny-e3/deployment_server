@@ -14,15 +14,15 @@ exports.start = async (req, res) => {
 };
 
 exports.list = async (req, res) => {
-  res.json(await deploymentService.list(req.query));
+  res.json(await deploymentService.list(req.query, req.user));
 };
 
 exports.get = async (req, res) => {
-  res.json(await deploymentService.get(req.params.id));
+  res.json(await deploymentService.get(req.params.id, req.user));
 };
 
 exports.logs = async (req, res) => {
-  res.json(await deploymentService.logs(req.params.id, req.query));
+  res.json(await deploymentService.logs(req.params.id, req.query, req.user));
 };
 
 exports.cancel = async (req, res) => {
