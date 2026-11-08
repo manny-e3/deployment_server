@@ -81,6 +81,16 @@ function createApp() {
 }
 
 function start() {
+  // Ensure database schema migrations are applied on launch
+  try {
+    const { execSync } = require('child_process');
+    logger.info('Applying database migrations (prisma migrate deploy)...');
+    execSync('npx prisma migrate deploy', { stdio: 'inherit', env: process.env });
+    logger.info('Database migrations verified successfully.');
+  } catch (migErr) {
+    logger.warn({ err: migErr.message }, 'Startup migration check notice');
+  }
+
   const fs = require('fs');
   const socketPath = process.env.SOCKET_PATH;
   if (socketPath) {
