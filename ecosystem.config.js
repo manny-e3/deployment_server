@@ -2,11 +2,14 @@
 //   npm ci --omit=dev && npm run release
 // Keep one instance of each: the worker's startup recovery assumes it is the only worker, and
 // more than one API process would need the Socket.IO Redis adapter and sticky sessions.
+const fs = require('fs');
+const isSymlinkRelease = fs.existsSync('./current/index.js');
+
 module.exports = {
   apps: [
     {
       name: 'portal-api',
-      script: 'index.js',
+      script: isSymlinkRelease ? 'current/index.js' : 'index.js',
       instances: 1,
       exec_mode: 'fork',
       env: { NODE_ENV: 'production' },
@@ -16,7 +19,7 @@ module.exports = {
     },
     {
       name: 'portal-worker',
-      script: 'worker.js',
+      script: isSymlinkRelease ? 'current/worker.js' : 'worker.js',
       instances: 1,
       exec_mode: 'fork',
       env: { NODE_ENV: 'production' },
