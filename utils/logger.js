@@ -38,20 +38,25 @@ const hasPretty = (() => {
 // Logs go to the console and to logs/app.log. Tests log nothing.
 function destination() {
   if (env.NODE_ENV === 'test') return undefined;
-  const console =
-    env.NODE_ENV === 'development' && hasPretty
-      ? {
-          target: 'pino-pretty',
-          options: { destination: 1, translateTime: 'SYS:HH:MM:ss', ignore: 'pid,hostname' },
-        }
-      : { target: 'pino/file', options: { destination: 1 } };
-  const file = {
-    target: 'pino/file',
-    options: { destination: path.join(__dirname, '..', 'logs', 'app.log'), mkdir: true },
-  };
-  return pino.transport({
-    targets: [console, file].map((t) => ({ ...t, level: env.LOG_LEVEL })),
-  });
+  try {
+    const consoleTarget =
+      env.NODE_ENV === 'development' && hasPretty
+        ? {
+            target: 'pino-pretty',
+            options: { destination: 1, translateTime: 'SYS:HH:MM:ss', ignore: 'pid,hostname' },
+          }
+        : { target: 'pino/file', options: { destination: 1 } };
+    const fileTarget = {
+      target: 'pino/file',
+      options: { destination: path.join(__dirname, '..', 'logs', 'app.log'), mkdir: true },
+    };
+    return pino.transport({
+      targets: [consoleTarget, fileTarget].map((t) => ({ ...t, level: env.LOG_LEVEL })),
+    });
+  } catch (err) {
+    // Fallback for shared hosting / thread-limited environments (EAGAIN on worker_threads)
+    return pino.destination(1);
+  }
 }
 
 const logger = pino(
