@@ -65,7 +65,7 @@ async function create(body, actor, ip) {
     ip,
   });
 
-  const baseUrl = env.APP_URL || 'https://portalops.online';
+  const baseUrl = process.env.RENDER_EXTERNAL_URL || (env.APP_URL && !env.APP_URL.includes('portalops.online') ? env.APP_URL : 'https://deployment-server-3xsh.onrender.com');
   return {
     ...server,
     ...(setupToken && {
