@@ -2,7 +2,8 @@ require('./setup');
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const { decrypt, encrypt } = require('../utils/crypto');
+const { decrypt, encrypt, normalizePrivateKey, generateSshKeyPair } = require('../utils/crypto');
+const { parseKey } = require('ssh2/lib/protocol/keyParser.js');
 
 describe('utils/crypto', () => {
   it('round-trips text, including multi-line keys and non-ASCII', () => {
@@ -36,5 +37,28 @@ describe('utils/crypto', () => {
     for (const bad of ['plain text', 'v2:a:b:c', 'v1:only-two']) {
       assert.throws(() => decrypt(bad), /v1 format/);
     }
+  });
+
+  it('generateSshKeyPair produces OpenSSH format compatible with ssh2', () => {
+    const kp = generateSshKeyPair('test-comment');
+    assert.match(kp.publicKey, /^ssh-ed25519 [A-Za-z0-9+/=]+ test-comment$/);
+    assert.match(kp.privateKey, /-----BEGIN OPENSSH PRIVATE KEY-----/);
+    const parsed = parseKey(kp.privateKey);
+    assert.ok(!(parsed instanceof Error), `Key failed to parse: ${parsed?.message}`);
+  });
+
+  it('normalizePrivateKey converts PKCS#8 Ed25519 to ssh2-compatible OpenSSH format', () => {
+    const rawEd = crypto.generateKeyPairSync('ed25519', {
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    });
+    // ssh2 throws on raw PKCS#8
+    const rawParsed = parseKey(rawEd.privateKey);
+    assert.ok(rawParsed instanceof Error);
+
+    // normalized parses cleanly in ssh2
+    const normalized = normalizePrivateKey(rawEd.privateKey);
+    assert.match(normalized, /-----BEGIN OPENSSH PRIVATE KEY-----/);
+    const parsed = parseKey(normalized);
+    assert.ok(!(parsed instanceof Error), `Normalized key failed to parse: ${parsed?.message}`);
   });
 });

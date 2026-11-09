@@ -2,6 +2,7 @@
 const crypto = require('node:crypto');
 const { Client } = require('ssh2');
 const { env } = require('./env');
+const { normalizePrivateKey } = require('./crypto');
 
 class SshError extends Error {
   /** reason: HOST_KEY_CHANGED | AUTH_FAILED | TIMEOUT | UNREACHABLE | FAILED */
@@ -120,7 +121,7 @@ function connect({
         readyTimeout,
         ...(authType === 'PASSWORD'
           ? { password: secret, tryKeyboard: true }
-          : { privateKey: secret, passphrase: passphrase ?? undefined }),
+          : { privateKey: normalizePrivateKey(secret), passphrase: passphrase ?? undefined }),
         hostVerifier: (hostKey) => {
           fingerprint = fingerprintOf(hostKey);
           keyChanged = Boolean(expectedFingerprint) && fingerprint !== expectedFingerprint;
