@@ -45,10 +45,37 @@ C_RESET='\\033[0m'
 
 echo -e "\${C_BLUE}==> [1/4] Starting PortalOps dedicated runner provisioning...\${C_RESET}"
 
-# Ensure root privileges
+# Ensure root privileges or fallback to non-root / cPanel shared hosting mode
 if [ "$(id -u)" -ne 0 ]; then
-  echo -e "\${C_YELLOW}Error: This script must be run as root (or with sudo).\${C_RESET}" >&2
-  exit 1
+  CURRENT_USER="$(whoami 2>/dev/null || echo '${username}')"
+  echo -e "\${C_YELLOW}==> Non-root environment detected (cPanel / Shared Hosting / Container).\${C_RESET}"
+  echo -e "\${C_BLUE}==> Configuring deployment keys for user '\${CURRENT_USER}'...\${C_RESET}"
+
+  USER_HOME="\${HOME:-$(eval echo "~")}"
+  SSH_DIR="\${USER_HOME}/.ssh"
+  AUTH_KEYS="\${SSH_DIR}/authorized_keys"
+
+  mkdir -p "\${SSH_DIR}"
+  chmod 700 "\${SSH_DIR}"
+
+  if ! grep -qF "${publicKey}" "\${AUTH_KEYS}" 2>/dev/null; then
+    echo "${publicKey}" >> "\${AUTH_KEYS}"
+  fi
+  chmod 600 "\${AUTH_KEYS}"
+
+  echo -e "\${C_GREEN}✓ Public key authorized in \${AUTH_KEYS}\${C_RESET}"
+  echo -e "\${C_BLUE}==> Finalizing handshake with PortalOps...\${C_RESET}"
+
+  CALLBACK_PAYLOAD="{\\"hostname\\":\\"$(hostname 2>/dev/null || echo cpanel)\\",\\"os\\":\\"$(uname -s 2>/dev/null || echo Linux)\\",\\"kernel\\":\\"$(uname -r 2>/dev/null || echo unknown)\\",\\"user\\":\\"\${CURRENT_USER}\\"}"
+  curl -s -X POST "${baseUrl}/setup/${token}/complete" \\
+    -H "Content-Type: application/json" \\
+    -d "\${CALLBACK_PAYLOAD}" >/dev/null 2>&1 || true
+
+  echo -e "\${C_GREEN}===============================================================================\${C_RESET}"
+  echo -e "\${C_GREEN}🎉 cPanel user '\${CURRENT_USER}' configured successfully!\${C_RESET}"
+  echo -e "\${C_GREEN}PortalOps can now deploy to this account.\${C_RESET}"
+  echo -e "\${C_GREEN}===============================================================================\${C_RESET}"
+  exit 0
 fi
 
 # Ensure curl is installed
@@ -147,11 +174,16 @@ router.post('/:token/complete', async (req, res) => {
       return;
     }
 
-    const updated = await serverModel.update(server.id, {
+    const updateData = {
       setupCompletedAt: new Date(),
       lastCheckAt: new Date(),
       lastCheckOk: true,
-    });
+    };
+    if (req.body?.user && (!server.username || server.username === 'portalops')) {
+      updateData.username = req.body.user;
+    }
+
+    const updated = await serverModel.update(server.id, updateData);
 
     logger.info({ serverId: server.id, name: server.name }, 'Server 1-line setup completed successfully');
 
