@@ -180,6 +180,14 @@ async function testConnection(id, actor, ip) {
     const { stdout } = await ssh.exec(conn, 'sh -s', { stdin: TEST_SCRIPT, timeoutMs: 15_000 });
     const info = parseLines(stdout);
 
+    let whoami = info.whoami;
+    if (!whoami) {
+      try {
+        const wRes = await ssh.exec(conn, 'whoami', { timeoutMs: 5000 });
+        whoami = wRes.stdout.trim() || undefined;
+      } catch {}
+    }
+
     const pinned = !server.hostFingerprint;
     await serverModel.update(id, {
       lastCheckAt: new Date(),
@@ -197,7 +205,7 @@ async function testConnection(id, actor, ip) {
 
     return {
       ok: true,
-      whoami: info.whoami,
+      whoami,
       gitVersion: info.git === 'missing' ? null : info.git,
       freeDiskMb: info.disk_kb ? Math.round(Number(info.disk_kb) / 1024) : null,
       fingerprint,
