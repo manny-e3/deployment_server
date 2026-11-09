@@ -9,14 +9,19 @@ const shellQuote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
 const envLine = (key, value) =>
   `${key}="${value.replace(/\\/g, '\\\\').replace(/"/g, '\\\"').replace(/\n/g, '\\n')}"`;
 
-/** Normalize Windows/MSYS2 path translation pitfalls (e.g. /xampp -> /c/xampp) */
+/** Normalize Windows/MSYS2 path translation pitfalls (e.g. C:\wamp64 -> /c/wamp64, /wamp64 -> /c/wamp64) */
 function normalizeDeploymentPath(rawPath) {
   if (!rawPath) return rawPath;
   let p = String(rawPath).trim().replace(/\\/g, '/');
+  // Handle Windows drive letters like C:/... -> /c/...
+  if (/^[A-Za-z]:\//.test(p)) {
+    const drive = p[0].toLowerCase();
+    p = `/${drive}${p.slice(2)}`;
+  }
   // In Git Bash / MSYS2 on Windows, leading / resolves to C:\Program Files\Git.
-  // Paths starting with standard Windows root folders without a drive letter (/xampp, /inetpub, etc.)
+  // Paths starting with standard Windows root folders without a drive letter (/wamp64, /wamp, /xampp, etc.)
   // must be mapped to /c/ so git clones into the actual C:\ root drive.
-  if (/^\/(xampp|inetpub|Users|Program Files|Windows)/i.test(p)) {
+  if (/^\/(wamp64|wamp|xampp|laragon|inetpub|Users|Program Files|Windows)/i.test(p)) {
     p = `/c${p}`;
   }
   return p;
