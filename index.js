@@ -81,14 +81,18 @@ function createApp() {
 }
 
 function start() {
-  // Ensure database schema migrations are applied on launch
-  try {
-    const { execSync } = require('child_process');
-    logger.info('Applying database migrations (prisma migrate deploy)...');
-    execSync('npx prisma migrate deploy', { stdio: 'inherit', env: process.env });
-    logger.info('Database migrations verified successfully.');
-  } catch (migErr) {
-    logger.warn({ err: migErr.message }, 'Startup migration check notice');
+  // Database migrations are applied during deployment (postDeploy).
+  // Only run inside start() if explicitly requested via AUTO_MIGRATE=true to prevent
+  // heavy child-process spawning and timeouts on resource-constrained hosts.
+  if (process.env.AUTO_MIGRATE === 'true') {
+    try {
+      const { execSync } = require('child_process');
+      logger.info('Applying database migrations (prisma migrate deploy)...');
+      execSync('npx prisma migrate deploy', { stdio: 'inherit', env: process.env });
+      logger.info('Database migrations verified successfully.');
+    } catch (migErr) {
+      logger.warn({ err: migErr.message }, 'Startup migration check notice');
+    }
   }
 
   const fs = require('fs');
