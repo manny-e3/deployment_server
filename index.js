@@ -26,13 +26,17 @@ function createApp() {
   app.use(httpLogger);
   app.use(helmet());
   // Only the portal's own frontend may call the API from a browser.
-    const allowedOrigins = [
+  const allowedOrigins = [
     env.APP_URL,
     'https://portalops.online',
     'https://www.portalops.online',
+    'http://portalops.online',
+    'http://www.portalops.online',
     'https://deploy.travaiq.com',
     'http://localhost:5173',
     'http://localhost:3000',
+    'http://101-php-01.fmdqgroup.com',
+    'https://101-php-01.fmdqgroup.com',
   ].filter(Boolean);
 
   app.use(

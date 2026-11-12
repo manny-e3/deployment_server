@@ -5,11 +5,12 @@ const ACCESS_COOKIE = 'access_token';
 const REFRESH_COOKIE = 'refresh_token';
 const CSRF_COOKIE = 'csrf_token';
 
-// In production cross-site (deploy.travaiq.com -> onrender.com), SameSite=None and Secure=true are mandatory
-const isProd = env.NODE_ENV === 'production';
+// In HTTPS production cross-site, SameSite=None and Secure=true are mandatory;
+// On plain HTTP (e.g. intranet/development), Secure=false and SameSite=lax are required so browsers do not drop cookies.
+const isHttps = (env.APP_URL || '').startsWith('https://');
 const base = {
-  secure: isProd,
-  sameSite: isProd ? 'none' : 'lax',
+  secure: isHttps,
+  sameSite: isHttps ? 'none' : 'lax',
   path: '/',
 };
 

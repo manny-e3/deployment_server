@@ -11,6 +11,7 @@ const authCache = require('../utils/authCache');
 const { env } = require('../utils/env');
 const { logger } = require('../utils/logger');
 const { BadRequest, Unauthorized, Conflict } = require('../utils/errors');
+const { checkDisposableEmail } = require('../utils/disposableEmail');
 const {
   durationToMs,
   hashToken,
@@ -329,6 +330,12 @@ async function resetPassword({ token, newPassword, ip }) {
 /** Registers a new user account, sends confirmation email, records audit event, and returns tokens. */
 async function register({ name, email, password, organizationName, role, ip }) {
   const cleanEmail = email.toLowerCase().trim();
+
+  const disposableCheck = checkDisposableEmail(cleanEmail);
+  if (disposableCheck.isDisposable) {
+    throw new BadRequest('DISPOSABLE_EMAIL', disposableCheck.message);
+  }
+
   const existing = await userModel.findByEmailWithHash(cleanEmail);
   if (existing) {
     throw new Conflict('EMAIL_EXISTS', 'An account with this email address already exists.');

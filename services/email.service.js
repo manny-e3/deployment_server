@@ -1168,6 +1168,233 @@ View team at: ${finalTeamUrl}
   }
 }
 
+async function sendContactFormEmail({ name, email, category, subject, message }) {
+  const mailTransporter = getTransporter();
+  const to = 'info@portalops.online';
+  const from = env.MAIL_FROM || 'PortalOps Inquiries <info@portalops.online>';
+  const replyTo = `"${String(name).replace(/"/g, '')}" <${email}>`;
+  const emailSubject = `[PortalOps Inquiry: ${String(category || 'GENERAL').toUpperCase()}] ${subject || 'New Contact Form Message'}`;
+
+  const sanitizedMessage = String(message || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br/>');
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New Contact Form Submission</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #061014;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      color: #e2e8e5;
+    }
+    .wrapper {
+      max-width: 600px;
+      margin: 32px auto;
+      background-color: #0a161d;
+      border: 1px solid #1a2a32;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+    .header {
+      background-color: #040a0d;
+      padding: 24px 32px;
+      border-bottom: 2px solid #005459;
+    }
+    .brand {
+      color: #ffffff;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .brand span {
+      color: #00df8f;
+    }
+    .tagline {
+      font-size: 11px;
+      color: #5eead4;
+      font-family: monospace;
+      margin-top: 4px;
+    }
+    .content {
+      padding: 32px;
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 20px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: -0.02em;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      background-color: rgba(0, 223, 143, 0.12);
+      border: 1px solid rgba(0, 223, 143, 0.3);
+      color: #00df8f;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 9999px;
+      font-family: monospace;
+      margin-bottom: 16px;
+    }
+    .field-card {
+      background-color: #050d11;
+      border: 1px solid #15242c;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 16px 0;
+    }
+    .field-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 13px;
+    }
+    .field-row:last-child {
+      border-bottom: none;
+    }
+    .field-label {
+      color: #94a3b8;
+      font-weight: 500;
+    }
+    .field-value {
+      color: #ffffff;
+      font-weight: 600;
+    }
+    .message-box {
+      background-color: #04080a;
+      border: 1px solid #1a2a32;
+      border-left: 3px solid #00df8f;
+      border-radius: 8px;
+      padding: 18px 20px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #e2e8f0;
+      margin: 20px 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .btn-container {
+      margin: 28px 0 12px;
+      text-align: center;
+    }
+    .btn {
+      display: inline-block;
+      padding: 12px 28px;
+      background-color: #00df8f;
+      color: #061014;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 13px;
+      border-radius: 8px;
+      letter-spacing: -0.01em;
+    }
+    .footer {
+      background-color: #04080a;
+      padding: 18px 32px;
+      text-align: center;
+      font-size: 11px;
+      color: #64748b;
+      border-top: 1px solid #15242c;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <div class="brand">portalops<span>.online</span></div>
+      <div class="tagline">INCOMING CONTACT INQUIRY</div>
+    </div>
+    <div class="content">
+      <div class="badge">${String(category || 'General').toUpperCase()}</div>
+      <h1>New Message from ${name}</h1>
+      <p style="color: #94a3b8; font-size: 13px; margin-top: 4px;">
+        A visitor has submitted an inquiry via the PortalOps Contact form.
+      </p>
+
+      <div class="field-card">
+        <div class="field-row">
+          <span class="field-label">Sender Name:</span>
+          <span class="field-value">${name}</span>
+        </div>
+        <div class="field-row">
+          <span class="field-label">Sender Email:</span>
+          <span class="field-value"><a href="mailto:${email}" style="color: #5eead4; text-decoration: none;">${email}</a></span>
+        </div>
+        <div class="field-row">
+          <span class="field-label">Category:</span>
+          <span class="field-value">${category}</span>
+        </div>
+        <div class="field-row">
+          <span class="field-label">Subject:</span>
+          <span class="field-value">${subject}</span>
+        </div>
+        <div class="field-row">
+          <span class="field-label">Received At:</span>
+          <span class="field-value">${new Date().toUTCString()}</span>
+        </div>
+      </div>
+
+      <div style="font-size: 12px; font-weight: 700; color: #5eead4; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 20px;">
+        Message Content:
+      </div>
+      <div class="message-box">${sanitizedMessage}</div>
+
+      <div class="btn-container">
+        <a href="mailto:${email}?subject=Re: ${encodeURIComponent(subject || 'PortalOps Inquiry')}" class="btn">Reply to ${name}</a>
+      </div>
+    </div>
+    <div class="footer">
+      Delivered directly to info@portalops.online via PortalOps Communication Gateway.<br>
+      Reply directly to this email to contact the sender (${email}).
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+PortalOps New Contact Inquiry:
+From: ${name} (${email})
+Category: ${category}
+Subject: ${subject}
+Date: ${new Date().toUTCString()}
+
+Message:
+${message}
+
+Reply to: ${email}
+  `.trim();
+
+  try {
+    const info = await mailTransporter.sendMail({
+      from,
+      to,
+      replyTo,
+      subject: emailSubject,
+      text,
+      html,
+    });
+    logger.info({ to, messageId: info.messageId, senderEmail: email }, 'Contact form inquiry email dropped to info@portalops.online');
+    return { success: true, messageId: info.messageId };
+  } catch (err) {
+    logger.error({ err, to, senderEmail: email }, 'Failed to deliver contact inquiry email to info@portalops.online');
+    throw err;
+  }
+}
+
 module.exports = {
   getTransporter,
   sendPasswordResetEmail,
@@ -1175,5 +1402,6 @@ module.exports = {
   sendTeamInvitationEmail,
   sendDeploymentStatusEmail,
   sendColleagueJoinedEmail,
+  sendContactFormEmail,
 };
 

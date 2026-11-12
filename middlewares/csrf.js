@@ -14,6 +14,8 @@ const EXEMPT_PATHS = new Set([
   '/auth/refresh',
   '/auth/forgot-password',
   '/auth/reset-password',
+  '/contact',
+  '/api/v1/contact',
   '/api/v1/auth/register',
   '/api/v1/auth/confirm-email',
   '/api/v1/auth/resend-confirmation',
@@ -64,7 +66,10 @@ function csrf(req, _res, next) {
     origPath.endsWith('/auth/refresh') ||
     origPath.endsWith('/auth/forgot-password') ||
     origPath.endsWith('/auth/reset-password') ||
-    origPath.endsWith('/auth/accept-invite')
+    origPath.endsWith('/auth/accept-invite') ||
+    normPath.endsWith('/contact') ||
+    origPath.endsWith('/contact') ||
+    strippedOrigPath.endsWith('/contact')
   ) {
     return next();
   }
@@ -73,8 +78,16 @@ function csrf(req, _res, next) {
   const header = req.get('x-csrf-token');
   if (cookie && header && sameToken(cookie, header)) return next();
 
-  // Allow verified origins (prevents cross-origin document.cookie read limitations)
+  // Allow verified origins and same-origin requests
+  const host = req.get('host');
   const origin = req.get('origin');
+  if (origin) {
+    try {
+      const originHost = new URL(origin).host;
+      if (host && originHost === host) return next();
+    } catch {}
+  }
+
   const allowed = [
     env.APP_URL,
     'https://portalops.online',
@@ -84,9 +97,11 @@ function csrf(req, _res, next) {
     'https://deploy.travaiq.com',
     'http://localhost:5173',
     'http://localhost:3000',
+    'http://101-php-01.fmdqgroup.com',
+    'https://101-php-01.fmdqgroup.com',
   ].filter(Boolean);
 
-  if (origin && allowed.includes(origin)) {
+  if (origin && (allowed.includes(origin) || allowed.some(a => a && origin.startsWith(a)))) {
     return next();
   }
 

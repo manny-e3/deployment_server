@@ -10,6 +10,7 @@ const targetRoutes = require('./targets.routes');
 const deploymentRoutes = require('./deployments.routes');
 const auditLogRoutes = require('./auditLogs.routes');
 const platformRoutes = require('./platform.routes');
+const contactRoutes = require('./contact.routes');
 
 // Everything here is served under /api/v1. Webhooks are mounted separately in index.js.
 const router = Router();
@@ -28,5 +29,6 @@ router.use('/targets', targetRoutes);
 router.use('/deployments', deploymentRoutes);
 router.use('/audit-logs', auditLogRoutes);
 router.use('/platform', platformRoutes);
+router.use('/contact', contactRoutes);
 
 module.exports = router;

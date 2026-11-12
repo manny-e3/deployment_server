@@ -1,5 +1,5 @@
 const ssh = require('../utils/ssh');
-const { shellQuote } = require('../utils/buildScript');
+const { shellQuote, normalizeDeploymentPath } = require('../utils/buildScript');
 const prisma = require('../models/prisma');
 const targetModel = require('../models/target.model');
 const serverModel = require('../models/server.model');
@@ -280,11 +280,14 @@ async function runArtisan(targetId, command, actor, ip) {
   });
 
   try {
-    const rawPath = target.path.replace(/\\/g, '/');
-    const safePath = /^\/(xampp|inetpub|Users|Program Files|Windows)/i.test(rawPath)
-      ? `/c${rawPath}`
-      : rawPath;
+    const safePath = normalizeDeploymentPath(target.path);
     const artisanScript = [
+      'for p in /c/xampp/php /c/laragon/bin/php/php* /c/wamp64/bin/php/php* /c/wamp/bin/php/php* "/c/Program Files/PHP"*; do',
+      '  if [ -d "$p" ] && [ -x "$p/php.exe" ]; then',
+      '    export PATH="$p:/c/ProgramData/ComposerSetup/bin:$PATH"',
+      '    break',
+      '  fi',
+      'done',
       'export PATH="/c/xampp/php:/xampp/php:/usr/local/bin:/usr/bin:$PATH"',
       `cd ${shellQuote(safePath)}`,
       `php artisan ${cleanCmd}`
