@@ -21,7 +21,11 @@ async function check(name, run) {
     const extra = await withTimeout(run());
     return { status: 'up', latencyMs: Math.round(performance.now() - started), ...extra };
   } catch (err) {
-    logger.warn({ err, check: name }, 'health check failed');
+    // Put the reason on the message line itself so it shows up whatever the log viewer drops.
+    // Prisma messages run over several lines; join them so the cause stays on one line.
+    const reason = String(err?.message ?? err).split('\n').map((l) => l.trim()).filter(Boolean).join(' | ');
+    const code = err?.errorCode ?? err?.code;
+    logger.warn({ err, check: name, code }, `health check failed: ${name}: ${code ? `[${code}] ` : ''}${reason}`);
     return { status: 'down' };
   }
 }
