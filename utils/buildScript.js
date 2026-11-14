@@ -34,8 +34,21 @@ function normalizeDeploymentPath(rawPath) {
  *   __PREV__ <sha|none>      the commit before this deploy
  *   __COMMIT__ <sha> <msg>   the commit after it
  */
+function decodeScript(val) {
+  if (typeof val === 'string' && val.startsWith('base64:')) {
+    try {
+      return Buffer.from(val.slice(7), 'base64').toString('utf8');
+    } catch {
+      return val;
+    }
+  }
+  return val || '';
+}
+
 function buildScript({ repoUrl, branch, path, sha, envVars = {}, preDeploy = '', postDeploy = '', healthCheckUrl = '' }) {
   const normalizedPath = normalizeDeploymentPath(path);
+  const cleanPreDeploy = decodeScript(preDeploy);
+  const cleanPostDeploy = decodeScript(postDeploy);
   let isRootByUrl = 0;
   if (healthCheckUrl) {
     try {
@@ -169,7 +182,7 @@ function buildScript({ repoUrl, branch, path, sha, envVars = {}, preDeploy = '',
   );
 
   // Pre-deploy hook runs after checkout and .env write
-  if (preDeploy.trim()) lines.push('', 'echo "__STEP__ Pre-deploy commands"', preDeploy);
+  if (cleanPreDeploy.trim()) lines.push('', 'echo "__STEP__ Pre-deploy commands"', cleanPreDeploy);
 
   // --------------------------------------------------------------------------
   // Framework & Environment Auto-Detection & Guardrails (Run BEFORE post-deploy)
@@ -392,7 +405,7 @@ function buildScript({ repoUrl, branch, path, sha, envVars = {}, preDeploy = '',
   );
 
   // Post-deploy hook runs AFTER the framework, dependencies, and environment are ready
-  if (postDeploy.trim()) lines.push('', 'echo "__STEP__ Post-deploy commands"', postDeploy);
+  if (cleanPostDeploy.trim()) lines.push('', 'echo "__STEP__ Post-deploy commands"', cleanPostDeploy);
 
   // 3. Windows Node.js API background daemon (runs after postDeploy so build/compile is done)
   lines.push(
