@@ -10,6 +10,21 @@ const { decrypt, encrypt } = require('../utils/crypto');
 const { diffFields } = require('../utils/diff');
 const { BusinessRuleError, Conflict, NotFound } = require('../utils/errors');
 
+/**
+ * Safely decodes base64-encoded deployment scripts sent by the frontend
+ * to prevent Edge WAF / CDN false-positives. Leaves unencoded scripts untouched.
+ */
+function decodeScript(val) {
+  if (typeof val === 'string' && val.startsWith('base64:')) {
+    try {
+      return Buffer.from(val.slice(7), 'base64').toString('utf8');
+    } catch {
+      return val;
+    }
+  }
+  return val;
+}
+
 async function getInProject(projectId, targetId, actor) {
   if (actor) await projectService.getPlain(projectId, actor);
   const target = await targetModel.findInProject(projectId, targetId);
@@ -40,7 +55,14 @@ async function create(projectId, body, actor, ip) {
   await projectService.getPlain(projectId, actor);
   await assertServerExists(body.serverId, actor);
 
-  const target = await targetModel.create({ ...body, projectId });
+  const cleanBody = {
+    ...body,
+    projectId,
+    preDeploy: decodeScript(body.preDeploy),
+    postDeploy: decodeScript(body.postDeploy),
+  };
+
+  const target = await targetModel.create(cleanBody);
   await audit.record({
     userId: actor.id,
     action: 'target.created',
@@ -66,10 +88,18 @@ async function update(projectId, targetId, body, actor, ip) {
   if (body.serverId || body.path) assertNotBusy(before);
   if (body.serverId && body.serverId !== before.serverId) await assertServerExists(body.serverId, actor);
 
-  const diff = diffFields(before, body);
+  const cleanBody = { ...body };
+  if (cleanBody.preDeploy !== undefined) {
+    cleanBody.preDeploy = decodeScript(cleanBody.preDeploy);
+  }
+  if (cleanBody.postDeploy !== undefined) {
+    cleanBody.postDeploy = decodeScript(cleanBody.postDeploy);
+  }
+
+  const diff = diffFields(before, cleanBody);
   if (Object.keys(diff).length === 0) return before;
 
-  const target = await targetModel.update(targetId, body);
+  const target = await targetModel.update(targetId, cleanBody);
   await audit.record({
     userId: actor.id,
     action: 'target.updated',

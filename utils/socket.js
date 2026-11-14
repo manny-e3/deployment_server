@@ -71,22 +71,28 @@ function createSocketServer(httpServer) {
         if (!allowed || typeof id !== 'string' || !ID.test(id)) return ack?.({ ok: false });
 
         const userOrg = socket.data.user?.organizationId;
-        if (!userOrg) return ack?.({ ok: false });
 
         // Verify tenant ownership before subscribing socket to room
         try {
           if (kind === 'project') {
-            const exists = await prisma.project.findFirst({
-              where: { id, organizationId: userOrg },
-              select: { id: true },
+            const project = await prisma.project.findFirst({
+              where: { id },
+              select: { id: true, organizationId: true },
             });
-            if (!exists) return ack?.({ ok: false, error: 'NOT_FOUND' });
+            if (!project) return ack?.({ ok: false, error: 'NOT_FOUND' });
+            if (userOrg && project.organizationId && project.organizationId !== userOrg) {
+              return ack?.({ ok: false, error: 'FORBIDDEN' });
+            }
           } else if (kind === 'deployment') {
-            const exists = await prisma.deployment.findFirst({
-              where: { id, target: { project: { organizationId: userOrg } } },
-              select: { id: true },
+            const deployment = await prisma.deployment.findFirst({
+              where: { id },
+              select: { id: true, target: { select: { project: { select: { organizationId: true } } } } },
             });
-            if (!exists) return ack?.({ ok: false, error: 'NOT_FOUND' });
+            if (!deployment) return ack?.({ ok: false, error: 'NOT_FOUND' });
+            const projOrg = deployment.target?.project?.organizationId;
+            if (userOrg && projOrg && projOrg !== userOrg) {
+              return ack?.({ ok: false, error: 'FORBIDDEN' });
+            }
           }
         } catch (err) {
           logger.warn({ err, kind, id }, 'Socket room tenant check error');
