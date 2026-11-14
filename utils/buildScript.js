@@ -166,12 +166,12 @@ function buildScript({ repoUrl, branch, path, sha, envVars = {}, preDeploy = '',
     `IS_ROOT_WEB_DIR=${isRootByUrl}`,
     'if [ "$IS_ROOT_WEB_DIR" -eq 0 ]; then',
     '  case "$DIR" in',
-    '    */domains/*/public_html/*|*/domains/*/public_html) IS_ROOT_WEB_DIR=1 ;;',
+    '    */domains/*/public_html/*|*/domains/*/public_html|/home/*/*.*|*/home/*/*.*) IS_ROOT_WEB_DIR=1 ;;',
     '  esac',
     'fi',
     'if [ "$IS_ROOT_WEB_DIR" -eq 0 ]; then',
     '  case "$DIR_BASENAME" in',
-    '    public_html|html|www|public|htdocs|web) IS_ROOT_WEB_DIR=1 ;;',
+    '    public_html|html|www|public|htdocs|web|*.*) IS_ROOT_WEB_DIR=1 ;;',
     '  esac',
     'fi',
     '',
@@ -194,14 +194,9 @@ function buildScript({ repoUrl, branch, path, sha, envVars = {}, preDeploy = '',
     '# -------------------------------------------------------------',
     'IS_WIN="${IS_WIN:-0}"',
     '',
-    '# Sync compiled assets into web root if dist/, build/, or current/dist/ was produced',
-    'if [ -d "$DIR/dist" ] && [ -f "$DIR/dist/index.html" ]; then',
-    '  cp -rf "$DIR/dist/"* "$DIR/" 2>/dev/null || true',
-    'elif [ -d "$DIR/build" ] && [ -f "$DIR/build/index.html" ]; then',
-    '  cp -rf "$DIR/build/"* "$DIR/" 2>/dev/null || true',
-    'elif [ -d "$DIR/current/dist" ] && [ -f "$DIR/current/dist/index.html" ]; then',
-    '  cp -rf "$DIR/current/dist/"* "$DIR/" 2>/dev/null || true',
-    'fi',
+    '# Clean stale build outputs to guarantee Vite / Webpack build from pristine source',
+    'git checkout -f -- index.html 2>/dev/null || true',
+    'rm -rf "$DIR/dist" "$DIR/build" 2>/dev/null || true',
     '',
     '# 1. Universal SPA Auto-Detection, <base href> Injection & .htaccess Routing (Linux & Windows)',
     'if [ -f "$DIR/package.json" ] && grep -qiE \'vite|react-scripts|webpack|@tailwindcss|vue\' "$DIR/package.json" && ! grep -qiE \'"start"[[:space:]]*:[[:space:]]*"node \' "$DIR/package.json" 2>/dev/null; then',
@@ -406,6 +401,19 @@ function buildScript({ repoUrl, branch, path, sha, envVars = {}, preDeploy = '',
 
   // Post-deploy hook runs AFTER the framework, dependencies, and environment are ready
   if (cleanPostDeploy.trim()) lines.push('', 'echo "__STEP__ Post-deploy commands"', cleanPostDeploy);
+
+  // Sync compiled assets into web root after postDeploy build completes
+  lines.push(
+    '',
+    '# Sync newly-compiled assets into web root if dist/, build/, or current/dist/ was produced',
+    'if [ -d "$DIR/dist" ] && [ -f "$DIR/dist/index.html" ]; then',
+    '  cp -rf "$DIR/dist/"* "$DIR/" 2>/dev/null || true',
+    'elif [ -d "$DIR/build" ] && [ -f "$DIR/build/index.html" ]; then',
+    '  cp -rf "$DIR/build/"* "$DIR/" 2>/dev/null || true',
+    'elif [ -d "$DIR/current/dist" ] && [ -f "$DIR/current/dist/index.html" ]; then',
+    '  cp -rf "$DIR/current/dist/"* "$DIR/" 2>/dev/null || true',
+    'fi',
+  );
 
   // 3. Windows Node.js API background daemon (runs after postDeploy so build/compile is done)
   lines.push(
