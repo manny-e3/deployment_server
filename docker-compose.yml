@@ -80,6 +80,7 @@ services:
       - "101-PHP-01.fmdqgroup.com:10.10.15.59"
       - "101-PHP-01:10.10.15.59"
     volumes:
+      - ./index.js:/app/index.js
       - ./prisma:/app/prisma
       - ./logs:/app/logs
       - ./utils:/app/utils
@@ -121,6 +122,7 @@ services:
       - "101-PHP-01.fmdqgroup.com:10.10.15.59"
       - "101-PHP-01:10.10.15.59"
     volumes:
+      - ./index.js:/app/index.js
       - ./prisma:/app/prisma
       - ./logs:/app/logs
       - ./utils:/app/utils

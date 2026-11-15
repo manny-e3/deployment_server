@@ -400,7 +400,17 @@ function buildScript({ repoUrl, branch, path, sha, envVars = {}, preDeploy = '',
   );
 
   // Post-deploy hook runs AFTER the framework, dependencies, and environment are ready
-  if (cleanPostDeploy.trim()) lines.push('', 'echo "__STEP__ Post-deploy commands"', cleanPostDeploy);
+  if (cleanPostDeploy.trim()) {
+    lines.push(
+      '',
+      'echo "__STEP__ Post-deploy commands"',
+      'export RAYON_NUM_THREADS=1',
+      'export ROLLDOWN_WORKERS=1',
+      'export UV_THREADPOOL_SIZE=1',
+      'export NODE_OPTIONS="--max-old-space-size=512"',
+      cleanPostDeploy
+    );
+  }
 
   // Sync compiled assets into web root after postDeploy build completes
   lines.push(
@@ -419,10 +429,14 @@ function buildScript({ repoUrl, branch, path, sha, envVars = {}, preDeploy = '',
   lines.push(
     '',
     'if [ "${IS_WIN:-0}" -eq 1 ]; then',
-    '  if [ -f "$DIR/package.json" ] && ( [ -f "$DIR/src/server.js" ] || [ -f "$DIR/server.js" ] || [ -f "$DIR/index.js" ] || [ -f "$DIR/app.js" ] || grep -qiE \'"start"[[:space:]]*:[[:space:]]*"node \' "$DIR/package.json" 2>/dev/null ) && ! grep -qiE \'vite|react-scripts|@tailwindcss\' "$DIR/package.json" 2>/dev/null; then',
-    '    NODE_PORT=$(grep -E \'^[[:space:]]*PORT=\' "$DIR/.env" 2>/dev/null | head -n 1 | cut -d \'=\' -f 2 | tr -d \'"\\r\\n \' || echo "")',
+    '  NODE_DIR="$DIR"',
+    '  [ -d "$DIR/current" ] && [ -f "$DIR/current/package.json" ] && NODE_DIR="$DIR/current"',
+    '  if [ -f "$NODE_DIR/package.json" ] && ( [ -f "$NODE_DIR/src/server.js" ] || [ -f "$NODE_DIR/server.js" ] || [ -f "$NODE_DIR/index.js" ] || [ -f "$NODE_DIR/app.js" ] || grep -qiE \'"start"[[:space:]]*:[[:space:]]*"node \' "$NODE_DIR/package.json" 2>/dev/null ) && ! grep -qiE \'vite|react-scripts|@tailwindcss\' "$NODE_DIR/package.json" 2>/dev/null; then',
+    '    NODE_PORT=$(grep -E \'^[[:space:]]*PORT=\' "$DIR/.env" "$DIR/current/.env" "$DIR/shared/.env" "$NODE_DIR/.env" 2>/dev/null | head -n 1 | cut -d \'=\' -f 2 | tr -d \'"\\r\\n \' || echo "")',
     '    [ -z "$NODE_PORT" ] && NODE_PORT="8000"',
-    '    cat << HTACCESS_NODE_EOF > "$DIR/.htaccess"',
+    '    if [ ! -f "$DIR/.htaccess" ] || ! grep -q "127.0.0.1" "$DIR/.htaccess" 2>/dev/null; then',
+    '      echo "Configuring Apache reverse proxy to http://127.0.0.1:${NODE_PORT} in $DIR/.htaccess..."',
+    '      cat << HTACCESS_NODE_EOF > "$DIR/.htaccess"',
     'Options -Indexes',
     'DirectoryIndex disabled',
     '',
@@ -430,11 +444,13 @@ function buildScript({ repoUrl, branch, path, sha, envVars = {}, preDeploy = '',
     '  RewriteEngine On',
     '  RewriteCond %{HTTP:Upgrade} websocket [NC]',
     '  RewriteCond %{HTTP:Connection} upgrade [NC]',
-    '  RewriteRule ^(.*)$ ws://127.0.0.1:${NODE_PORT}/\$1 [P,L]',
+    '  RewriteRule ^(.*)$ ws://127.0.0.1:${NODE_PORT}/\\$1 [P,L]',
     '  RewriteRule ^(index\\.php)?$ http://127.0.0.1:${NODE_PORT}/ [P,L]',
-    '  RewriteRule ^(.*)$ http://127.0.0.1:${NODE_PORT}/\$1 [P,L,QSA]',
+    '  RewriteRule ^(.*)$ http://127.0.0.1:${NODE_PORT}/\\$1 [P,L,QSA]',
     '</IfModule>',
     'HTACCESS_NODE_EOF',
+    '      chmod 644 "$DIR/.htaccess" 2>/dev/null || true',
+    '    fi',
     '',
     '    ENTRY="src/server.js"',
     '    [ -f "$DIR/server.js" ] && ENTRY="server.js"',
