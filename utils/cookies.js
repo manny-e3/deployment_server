@@ -7,7 +7,7 @@ const CSRF_COOKIE = 'csrf_token';
 
 // In HTTPS production cross-site, SameSite=None and Secure=true are mandatory;
 // On plain HTTP (e.g. intranet/development), Secure=false and SameSite=lax are required so browsers do not drop cookies.
-const isHttps = (env.APP_URL || '').startsWith('https://');
+const isHttps = (env.APP_URL || '').startsWith('https://') || process.env.NODE_ENV === 'production';
 const base = {
   secure: isHttps,
   sameSite: isHttps ? 'none' : 'lax',

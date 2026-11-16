@@ -24,7 +24,11 @@ function createApp() {
 
   app.use(requestId);
   app.use(httpLogger);
-  app.use(helmet());
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    })
+  );
   // Only the portal's own frontend may call the API from a browser.
   const allowedOrigins = [
     env.APP_URL,

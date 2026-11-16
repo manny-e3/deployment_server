@@ -17,6 +17,8 @@ const { buildScript, killTreeScript } = require('../utils/buildScript');
 const { decrypt } = require('../utils/crypto');
 const { env } = require('../utils/env');
 const { cancelKey, publishStatus } = require('../utils/events');
+const http = require('node:http');
+const https = require('node:https');
 const { LogStream } = require('../utils/logStream');
 const { logger } = require('../utils/logger');
 const { redis } = require('../utils/redis');
@@ -25,15 +27,75 @@ const ssh = require('../utils/ssh');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+function pingUrlDirect(targetUrl, timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    try {
+      const parsed = new URL(targetUrl);
+      const client = parsed.protocol === 'https:' ? https : http;
+      const req = client.get(
+        parsed,
+        {
+          rejectUnauthorized: false,
+          headers: { 'User-Agent': 'PortalOps-HealthCheck/1.0' },
+          timeout: timeoutMs,
+        },
+        (res) => {
+          res.resume();
+          resolve({ ok: res.statusCode >= 200 && res.statusCode < 400, status: res.statusCode });
+        }
+      );
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('TIMEOUT'));
+      });
+      req.on('error', (err) => reject(err));
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+function pingUrlViaSsh(conn, targetUrl, timeoutSec = 8) {
+  return new Promise((resolve, reject) => {
+    if (!conn) return reject(new Error('NO_SSH_CONN'));
+    const safeUrl = targetUrl.replace(/'/g, "'\\''");
+    const cmd = `curl -k -s -L -o /dev/null -w "%{http_code}" -m ${timeoutSec} '${safeUrl}'`;
+    conn.exec(cmd, (err, stream) => {
+      if (err) return reject(err);
+      let out = '';
+      stream.on('data', (d) => (out += d));
+      stream.stderr.on('data', () => {});
+      stream.on('close', () => {
+        const code = parseInt(out.trim(), 10);
+        if (!isNaN(code) && code > 0) {
+          resolve({ ok: code >= 200 && code < 400, status: code });
+        } else {
+          reject(new Error(`Invalid curl response: ${out.trim()}`));
+        }
+      });
+    });
+  });
+}
+
 /** Up to `attempts` GET requests, `intervalMs` apart; true on the first 2xx answer. */
-async function healthCheck(url, log, { attempts = 5, intervalMs = 3000 } = {}) {
+async function healthCheck(url, log, { attempts = 5, intervalMs = 3000 } = {}, conn = null) {
   for (let i = 1; i <= attempts; i += 1) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(5000), redirect: 'follow' });
+      let res;
+      if (conn) {
+        try {
+          res = await pingUrlViaSsh(conn, url, 8);
+        } catch (sshErr) {
+          res = await pingUrlDirect(url, 8000);
+        }
+      } else {
+        res = await pingUrlDirect(url, 8000);
+      }
+
       log.system(`Health check ${i}/${attempts}: HTTP ${res.status}`);
       if (res.ok) return true;
     } catch (err) {
-      log.system(`Health check ${i}/${attempts}: ${err.cause?.code ?? err.name}`);
+      log.system(`Health check ${i}/${attempts}: ${err.code ?? err.message ?? err.name}`);
     }
     if (i < attempts) await sleep(intervalMs);
   }
@@ -185,7 +247,7 @@ async function runDeployment(deploymentId, options = {}) {
     } else if (target.healthCheckUrl) {
       // 7
       log.system(`Checking ${target.healthCheckUrl}`);
-      const healthy = await healthCheck(target.healthCheckUrl, log, options.healthCheck);
+      const healthy = await healthCheck(target.healthCheckUrl, log, options.healthCheck, conn);
       if (healthy) result.status = 'SUCCESS';
       else result.error = 'HEALTH_CHECK_FAILED';
     } else {
