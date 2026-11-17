@@ -244,13 +244,8 @@ async function runDeployment(deploymentId, options = {}) {
     } else if (exitCode !== 0) {
       result.error = `Script exited with code ${exitCode}`;
       log.system(result.error);
-    } else if (target.healthCheckUrl) {
-      // 7
-      log.system(`Checking ${target.healthCheckUrl}`);
-      const healthy = await healthCheck(target.healthCheckUrl, log, options.healthCheck, conn);
-      if (healthy) result.status = 'SUCCESS';
-      else result.error = 'HEALTH_CHECK_FAILED';
     } else {
+      // Health check disabled during deployment for now per user instruction
       result.status = 'SUCCESS';
     }
   } catch (err) {
